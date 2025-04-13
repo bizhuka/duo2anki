@@ -13,7 +13,7 @@
         <v-btn icon="mdi-close" variant="text" density="compact" size="x-large" @click="methods.closeDialog"
           style="position: absolute; top: 8px; right: 8px;"></v-btn>
       </v-card-title>
-      <v-card-text style="padding-top: 0.2rem;padding-bottom: 0;">
+      <v-card-text style="padding-top: 0.2rem; padding-bottom: 0; overflow-y: auto; max-height: 70vh;">
         <v-col style="padding-top: 0;padding-bottom: 0; display: flex; flex-direction: column; flex-grow: 1;">
 
           <v-text-field v-model="dialog.editingWord.front" :label="util.getText('Word')" v-if="dialog.showRichText" density="compact"

@@ -1,5 +1,6 @@
 import { util } from './lib/util.js'
-import { getDuolingoVocabulary } from './lib/duolingo_loader.js'
+import { getDuolingoVocabulary } from './lib/duolingo_loader.js';
+import './lib/sidepanel_handler.js'; // Handles side panel connection and toggling
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message.background)
@@ -11,28 +12,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
 
     return true; // This keeps the message port open
-});
-
-
-let openSidePanel = false;
-chrome.commands.onCommand.addListener((command) => {
-    if (command !== 'duo2anki_side_panel') {
-        return;
-    }
-    openSidePanel = !openSidePanel
-    // Open the side panel when the command is triggered
-    if (openSidePanel)
-        util.open_side_panel({ active: true, currentWindow: true });
-    else
-        chrome.runtime.sendMessage({
-            foreground: true,
-            action: 'close_side_panel',
-        });
-})
-
-// Listener for the extension icon click
-chrome.action.onClicked.addListener(() => {
-    util.open_side_panel({ active: true, currentWindow: true });
 });
 
 class MessageHandler {

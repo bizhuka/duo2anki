@@ -6,19 +6,19 @@
     density="compact"
     hide-details
     @update:modelValue="onLanguageChange"
-    style="max-width: 70px;"
+    style="max-width: 3.5rem;"
     class="mx-2 language-select"
     variant="plain"
   >
     <!-- Slot for displaying the selected item (flag) -->
     <template v-slot:selection="{ item }">
-      <v-img :src="item.raw.flag" height="20" width="30" contain class="me-2"></v-img>
+      <v-img :src="item.raw.flag" height="18" width="26" contain class="me-1"></v-img>
     </template>
     <!-- Slot for displaying items in the dropdown list -->
     <template v-slot:item="{ props, item }">
       <v-list-item v-bind="props" :title="null">
         <template v-slot:prepend>
-          <v-img :src="item.raw.flag" height="20" width="30" contain class="me-3"></v-img>
+          <v-img :src="item.raw.flag" height="18" width="26" contain class="me-2"></v-img>
         </template>
         <v-list-item-title>{{ item.raw.nativeName }}</v-list-item-title>
       </v-list-item>
@@ -73,6 +73,6 @@ export default {
 /* Add any component-specific styles here if needed */
 .language-select {
   /* Example style */
-  min-width: 70px; /* Ensure it doesn't shrink too much */
+  min-width: 3.5rem; /* Ensure it doesn't shrink too much */
 }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <v-app :data-lang="optionsData.pluginLanguage">
     <div class="sidepanel-container">
-      <v-app-bar density="compact">
+      <v-app-bar density="compact" style="height: 2.3rem;">
         <v-app-bar-title>
           <v-icon color="green darken-2" class="me-2">mdi-translate</v-icon>
           {{ currentCourse }}
@@ -10,15 +10,16 @@
 
         <!-- Language Selector -->
         <language-selector v-model="optionsData.pluginLanguage" @update:modelValue="saveOptions" />
-        <!-- Theme Switch -->
-        <v-switch density="compact" hide-details v-model="optionsData.lightTheme" @change="saveOptions"
-          :label="optionsData.lightTheme ? util.getText('☀️ Light') : util.getText('🌙 Dark')" inset
-          color="primary"></v-switch>
+        <!-- Theme Toggle Button -->
+        <v-btn density="compact" variant="text" @click="optionsData.lightTheme = !optionsData.lightTheme; saveOptions()"
+          style="min-width: 0; padding: 0 2px; font-size: 1.2rem;">
+          {{ optionsData.lightTheme ? '☀️' : '🌙' }}
+        </v-btn>
       </v-app-bar>
 
-      <v-main style="--v-layout-bottom: 0;">
+      <v-main style="--v-layout-bottom: 0;--v-layout-top: 2.5rem;">
         <InfoAlert ref="infoAlert" />
-        <v-container fluid style="padding-top: 0; padding-bottom: 0;height: 100%;">
+        <v-container fluid style="padding-top: 0rem; padding-bottom: 0;height: 100%;">
           <v-card density="compact" style="height: 100%;">
             <v-tabs v-model="activeTab" bg-color="primary" density="compact">
               <v-tab value="words" density="compact" prepend-icon="mdi-magnify" style="text-transform: none;">{{ util.getText('Words') }}</v-tab>
@@ -201,6 +202,20 @@ export default {
 /* Hide the app-level scrollbar while keeping the data-table scrollbar */
 .v-app, .v-main, .sidepanel-container, .v-container {
   overflow: hidden !important;
+}
+
+/* Override compact app bar height */
+.v-app-bar.v-toolbar--density-compact .v-toolbar__content {
+  height: 2.2rem !important;
+}
+
+/* Hide visual scrollbar on main page elements */
+html, body {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 /* Ensure the tab content can scroll within its container */

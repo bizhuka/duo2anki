@@ -288,16 +288,17 @@ export default {
 <style scoped>
 .data-table-container {
   position: relative;
-  height: calc(100vh - 13.5rem);
+  height: calc(100vh - 13.5rem); /* Adjust height calculation as needed */
   display: flex;
   flex-direction: column;
+  overflow-y: auto; /* Make this container scrollable */
 }
 
 /* Ensure the data table properly fills its container */
 .v-data-table {
   flex: 1;
   height: 100%;
-  overflow-y: auto; /* Keep only this scrollbar */
+  /* overflow-y: auto; */ /* Remove scroll from inner table */
 }
 
 /* Custom styling for the data table footer */

@@ -22,7 +22,7 @@ const duolingoCourses = [
     { code: "HE", language: "Hebrew" },
     { code: "VI", language: "Vietnamese" },
     { code: "CY", language: "Welsh" },
-    { code: "UK", language: "Ukrainian" },
+    { code: "UA", language: "Ukrainian" },
     { code: "HU", language: "Hungarian" },
     { code: "RO", language: "Romanian" },
     { code: "SW", language: "Swahili" },
@@ -59,6 +59,7 @@ import koTranslations from './ko.js'; // Korean
 import ptTranslations from './pt.js'; // Portuguese
 import ruTranslations from './ru.js'; // Russian
 import trTranslations from './tr.js'; // Turkish
+import uaTranslations from './ua.js'; // Ukrainian
 import zhTranslations from './zh.js'; // Chinese
 
 export const pluginsTranslations = {
@@ -75,6 +76,7 @@ export const pluginsTranslations = {
     PT: { flag: '/images/flags/br.png', native: 'Português', translations: ptTranslations }, // Brazil
     RU: { flag: '/images/flags/ru.png', native: 'Русский', translations: ruTranslations }, // Russia
     TR: { flag: '/images/flags/tr.png', native: 'Türkçe', translations: trTranslations }, // Turkey
+    UA: { flag: '/images/flags/ua.png', native: 'Українська', translations: uaTranslations }, // Ukraine
     ZH: { flag: '/images/flags/cn.png', native: '中文', translations: zhTranslations }, // China
 };
 export function get_translated_text(text, language, args = []){

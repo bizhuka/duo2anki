@@ -16,5 +16,7 @@ const app = createApp(App, {
 
 // Initialize plugins and mount app
 registerPlugins(app).then(() => {
-  app.mount('#app')
+  app.mount('#app');
+  // Connect to background script to signal the panel is open
+  chrome.runtime.connect({ name: 'sidepanel' });
 })
