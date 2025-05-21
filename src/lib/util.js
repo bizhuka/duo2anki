@@ -1,14 +1,10 @@
-import { get_translated_text } from "./i18n/translation.js";
+import { get_translated_text, getDuolingoCourseLanguage } from "./i18n/translation.js";
 
 export const util = {
   options: {
     lightTheme: true,
     current_course_id: null,
     pluginLanguage: "EN",
-
-    // Export to Anki
-    ankiDeck: "",
-    ankiModel: "",
 
     // Context
     useGrok: false,
@@ -36,6 +32,11 @@ export const util = {
     OFF: 2,
 
     CONTEXT_ONLY: 99,
+  },
+
+  getCurrentCourse() {
+    const course_id = this.options.current_course_id;
+    return course_id ? getDuolingoCourseLanguage(this.get_course_info(course_id).lang_id) : '';
   },
 
   delete_all_linebreaks: function (text) {
@@ -112,6 +113,7 @@ export const util = {
   },
 
   async _set_options(options) {
+    debugger
     for (let key in options) {
       if (this.options.hasOwnProperty(key)) {
         if (Array.isArray(this.options[key])) {

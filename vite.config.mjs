@@ -14,7 +14,7 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig({
 
   build: {
-    chunkSizeWarningLimit: 1000, // Adjust chunk size warning limit to 1000 kB
+    chunkSizeWarningLimit: 2000, // Adjust chunk size warning limit to 2000 kB
     rollupOptions: {
       input: {
         sidepanel: fileURLToPath(new URL('./sidepanel.html', import.meta.url)),
@@ -75,6 +75,10 @@ export default defineConfig({
         //   src: 'src/util.js',
         //   dest: './',
         // },
+        {
+          src: 'node_modules/sql.js/dist/sql-wasm.wasm',
+          dest: 'js/sql' // This will copy to dist/js/sql/sql-wasm.wasm
+        }
       ],
     }),
 

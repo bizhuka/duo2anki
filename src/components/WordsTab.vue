@@ -1,16 +1,20 @@
 <template>
   <div :data-lang="optionsData.pluginLanguage">
-    <!--   -->
-       <!-- Fixed header with pagination in a nice card -->
-       <v-card flat class="pagination-card mb-2"> 
-        <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem; gap: 0.5rem;">
-      <ActionButton :icon="hasDuolingoPage ? 'mdi-download' : 'mdi-open-in-new'"
-        :tooltipText="hasDuolingoPage ? util.getText('Load Words') : util.getText('Open Words Page')" color="primary"
-        :loading="loadingButton" :dataLang="optionsData.pluginLanguage" @click="loadWords" />
-      <ActionButton icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
-        :dataLang="optionsData.pluginLanguage" @click="openContextDialog" />
-      <ActionButton icon="mdi-delete" :tooltipText="util.getText('Delete all')" color="error"
-        :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="clearHistory" />
+       <v-card flat class="pagination-card mb-2">
+        <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem;">
+          <ActionButton :icon="hasDuolingoPage ? 'mdi-download' : 'mdi-open-in-new'"
+            :tooltipText="hasDuolingoPage ? util.getText('Load Words') : util.getText('Open Words Page')" color="primary"
+            :loading="loadingButton" :dataLang="optionsData.pluginLanguage" @click="loadWords" />
+          <ActionButton icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
+            :dataLang="optionsData.pluginLanguage" @click="openContextDialog" />
+          <!-- :loading="ankiLoading.export" -->
+          <ActionButton icon="mdi-upload"
+            :tooltipText="util.getText('Anki')"
+            color="success"
+            :disabled="!db_words.length"
+            @click="openAnkiExportDialog"/>
+          <ActionButton icon="mdi-delete" :tooltipText="util.getText('Delete all')" color="error"
+            :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="clearHistory" />
         </div>
 
       <v-text-field append-icon="mdi-magnify" autofocus density="compact" v-model="search" clearable hide-details
@@ -71,26 +75,27 @@
       :optionsData="optionsData" />
     <ConfirmDialog ref="confirmDialog" :optionsData="optionsData" />
     <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words" />
+    <AnkiExportDialog
+      ref="ankiExportDialog"
+      :db_words="db_words"
+      :optionsData="optionsData"
+      :saveOptions="saveOptions"
+      :showMessage="showMessage"
+    />
   </div>
 </template>
 
 <script>
-import { ref, computed } from 'vue';
 import { util } from '../lib/util.js'; // Import util directly
 import ContextDialog from './ContextDialog.vue';
 import EditDialog from './EditDialog.vue'; // Import EditDialog
 import ConfirmDialog from './small/ConfirmDialog.vue'; // Import ConfirmDialog
 import ActionButton from './small/ActionButton.vue'; // Import the new ActionButton component
+import AnkiExportDialog from './small/AnkiExportDialog.vue'; // Import the new dialog
 
 const DUOLINGO_WORDS_URL = 'https://www.duolingo.com/practice-hub/words';
 
 export default {
-  components: { // Register the new component
-    ContextDialog,
-    EditDialog,
-    ConfirmDialog,
-    ActionButton, // Register ActionButton
-  },
   props: {
     db_words: {
       type: Array,
@@ -262,8 +267,19 @@ export default {
     // --- Other Actions ---
     playSound(item) {
       util.playSound(item); // Use imported util
-    }
+    },
+
+    openAnkiExportDialog() {
+      if (this.$refs.ankiExportDialog) {
+        this.$refs.ankiExportDialog.openDialog();
+      } else {
+        console.error('AnkiExportDialog ref not found');
+        this.showMessage('Could not open Anki export dialog.', 'error');
+      }
+    },
+    // exportToFile and get_id_from_name methods are removed from here
   },
+
   async mounted() {
     await this.checkDuolingoPageLoaded(); // Check on mount
 

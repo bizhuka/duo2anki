@@ -12,8 +12,12 @@
     "@mdi/font": "^7.4.47",
     "@vueup/vue-quill": "^1.2.0",
     "dexie": "^4.0.10",
+    "file-saver": "^2.0.5",
+    "genanki-js": "^2.0.0",
+    "jszip": "^3.10.1",
     "quill": "^2.0.3",
     "roboto-fontface": "*",
+    "sql.js": "^1.13.0",
     "vue": "^3.4.31",
     "vuetify": "^3.7.5"
   },

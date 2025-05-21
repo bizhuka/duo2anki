@@ -1,9 +1,9 @@
 <template>
-  <v-tooltip :text="tooltipText" location="top">
-    <template v-slot:activator="{ props: tooltipProps }">
-      <v-btn
+  <!-- <v-tooltip :text="tooltipText" location="top">
+    <template v-slot:activator="{ props: tooltipProps }"> -->
+    <v-btn
         v-bind="tooltipProps"
-        :icon="true"
+        :icon="false"
         :color="color"
         :variant="variant"
         :size="size"
@@ -12,13 +12,13 @@
         :loading="loading"
         :disabled="disabled"
         :data-lang="dataLang"
-        class="me-2"
         @click="$emit('click', $event)"
       >
-        <v-icon :icon="icon"></v-icon>
+        <v-icon :icon="icon" class="mr-1"></v-icon>
+        {{ tooltipText }}
       </v-btn>
-    </template>
-  </v-tooltip>
+    <!-- </template>
+  </v-tooltip> -->
 </template>
 
 <script setup>

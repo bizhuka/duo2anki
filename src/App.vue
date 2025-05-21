@@ -23,7 +23,6 @@
           <v-card density="compact" style="height: 100%;">
             <v-tabs v-model="activeTab" bg-color="primary" density="compact">
               <v-tab value="words" density="compact" prepend-icon="mdi-magnify" style="text-transform: none;">{{ util.getText('Words') }}</v-tab>
-              <v-tab value="anki" density="compact" prepend-icon="mdi-cards" style="text-transform: none;">{{ util.getText('Anki') }}</v-tab>
               <v-tooltip location="bottom" :open-delay="1000">
                 <template v-slot:activator="{ props }">
                   <v-tab value="hotkeys" density="compact" prepend-icon="mdi-keyboard-settings-outline" v-bind="props"></v-tab>
@@ -39,13 +38,6 @@
                   <WordsTab :db_words="db_words" :optionsData="optionsData" :saveOptions="saveOptions"
                     :dbProxy="dbProxy" :showMessage="showMessage" @refresh-words="loadWordsFromDb" />
                 </v-window-item>
-
-                <!-- Anki -->
-                <v-window-item value="anki">
-                  <Anki :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"
-                    :showMessage="showMessage" />
-                </v-window-item>
-
                 <!-- Hotkeys Tab -->
                 <v-window-item value="hotkeys">
                   <HotkeysInfo :optionsData="optionsData" />
@@ -70,7 +62,6 @@ import WordsTab from './components/WordsTab.vue';
 
 import { util } from './lib/util.js';
 import { DbProxy } from './lib/database.js';
-import { getDuolingoCourseLanguage, pluginsTranslations } from './lib/i18n/translation.js'; // Import pluginsTranslations
 
 export default {
   components: { HotkeysInfo, WordsTab, LanguageSelector }, // Register LanguageSelector
@@ -87,8 +78,7 @@ export default {
 
   computed: {
     currentCourse() {
-      const course_id = this.optionsData.current_course_id;
-      return course_id ? getDuolingoCourseLanguage(util.get_course_info(course_id).lang_id) : '';
+      return util.getCurrentCourse();
     },
   },
 

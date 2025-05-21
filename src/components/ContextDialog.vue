@@ -82,7 +82,7 @@ export default {
             if (!prompt_prefix || !props.optionsData.request_count) return; // Basic validation
 
             // Save options to local storage
-            props.saveOptions(props.optionsData);
+            props.saveOptions();
 
             // Filter words with empty context
             const filteredWords = props.db_words.filter(word => !word.context);
