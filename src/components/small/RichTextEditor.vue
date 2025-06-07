@@ -46,6 +46,10 @@ const props = defineProps({
     type: Object,
     required: true
   },
+  hideToolbar: { // New prop to control toolbar visibility
+    type: Boolean,
+    default: false
+  }
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -76,23 +80,27 @@ const editorStyle = computed(() => ({
 
 
 // Toolbar options with the new button and handler
-const editorOptions = {
-  matchVisual: false,
-  modules: {
-    toolbar: {
+const editorOptions = computed(() => {
+  const modules = {
+    toolbar: props.hideToolbar ? false : { // Conditionally hide or show toolbar
       container: [
         ['bold', 'italic', 'underline', 'clean'],
         [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        ['customButton1'] // Generic button key
+        ['customButton1'] // props.hideToolbar Or hide this button?
       ],
       handlers: {
         // Use generic handler key 'customButton1Click'
         'customButton1': () => props.handlers?.customButton1Click?.()
       }
     }
-  },
-  placeholder: util.getText('Enter text...')
-};
+  };
+
+  return {
+    matchVisual: false,
+    modules: modules,
+    placeholder: util.getText('Enter text...')
+  };
+});
 
 // Function to emit update event
 const handleUpdate = (content) => {

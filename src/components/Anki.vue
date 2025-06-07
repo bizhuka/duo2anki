@@ -1,5 +1,15 @@
 <template>
-  <v-dialog v-model="dialog" max-width="500px">
+  <div :data-lang="optionsData.pluginLanguage">
+
+    <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem;">
+      <!-- :loading="ankiLoading.export" -->
+      <ActionButton icon="mdi-upload"
+        :tooltipText="util.getText('Anki')"
+        color="success"
+        :disabled="!db_words.length"
+        @click="triggerExport"/>
+    </div>
+
     <v-card>
       <v-card-title>
         <span class="headline">{{ exportDialogTitle }}</span>
@@ -43,101 +53,119 @@
                 <span v-html="util.getText('anki_exportContextTooltip')"></span>
               </v-tooltip>
             </v-col>
+
+            <v-col cols="12">
+                  <v-checkbox
+                    label="Include schedule information"
+                    density="compact"
+                    hide-details
+                    readonly="true"/>
+            </v-col>
           </v-row>
         </v-container>
       </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn color="primary" text @click="closeDialog">{{ util.getText('Cancel') }}</v-btn>
-        <v-btn color="success" text @click="triggerExport">{{ util.getText('Ok') }}</v-btn>
-      </v-card-actions>
     </v-card>
-  </v-dialog>
+  </div>
 </template>
 
+<script setup>
+    import { util } from '../lib/util.js';;
+    import ActionButton from './small/ActionButton.vue';
+</script>
+
 <script>
-import { ref, computed } from 'vue';
-import { util } from '../../lib/util.js'; // Assuming util.js is in lib
 import { Model, Deck, Note, Package as AnkiPackage } from 'genanki-js';
 
 export default {
+  components: { 
+    ActionButton,
+  },
   props: {
-    db_words: {
-      type: Array,
-      required: true,
-    },
     optionsData: {
       type: Object,
-      required: true,
+      required: true
     },
     saveOptions: {
       type: Function,
-      required: true,
+      required: true
+    },
+    db_words: {
+      type: Array,
+      required: true
     },
     showMessage: {
       type: Function,
-      required: true,
+      required: true
     }
   },
-  setup(props) {
-    const dialog = ref(false);
-    const deckName = ref('');
-    const nodeType = ref('');
+  
+  data() {
+    return {
+      deckName: '',
+      nodeType: '',
+      ankiLoading: false,
+    };
+  },
+  
+  mounted() {
+    this.initializeComponent();
+  },
 
-    function openDialog() {
-      deckName.value = `duo2anki - ` + util.getCurrentCourse();
-      nodeType.value = `!duo2anki - ` + util.getCurrentCourse();
-      dialog.value = true;
-    }
+  computed: {
+    exportDialogTitle() {
+      const wordsToExport = this.getValidWordsForExport();
+      return `${ typeof wordsToExport === 'string' ? wordsToExport : `${ util.getText('Words') } - ${wordsToExport.length}`}`;
+    },
+  },
+  
+  methods: {
+    _show_error(message){
+      this.showMessage(message, 'error');
+    },
 
-    function closeDialog() {
-      dialog.value = false;
-    }
-    
-    function get_id_from_name(name) {
+    async initializeComponent() {
+        this.deckName = `duo2anki - ` + util.getCurrentCourse();
+        this.nodeType = `!duo2anki - ` + util.getCurrentCourse();
+    },
+
+    get_id_from_name(name) {
       const hash = Array.from(name).reduce((acc, char) => acc + char.charCodeAt(0), 0);
       return hash % 1000000000; // Ensure the ID is within a valid range
-    }
+    },
 
-    function getValidWordsForExport() {
-      if (!props.db_words || props.db_words.length === 0) {
+    getValidWordsForExport() {
+      if (!this.db_words || this.db_words.length === 0) {
         return util.getText('No words to process or request count is 0.');
       }
 
-      const words = props.optionsData.exportWithContextOnly
-        ? props.db_words.filter(word => word.context && word.context.trim() !== '')
-        : props.db_words;
+      const words = this.optionsData.exportWithContextOnly
+        ? this.db_words.filter(word => word.context && word.context.trim() !== '')
+        : this.db_words;
 
       if (words.length === 0) {
         return util.getText('anki_noMatchingWords');
       }
       return words;
-    }
+    },
 
-    const exportDialogTitle = computed(() => {
-      const wordsToExport = getValidWordsForExport();
-      return `${ typeof wordsToExport === 'string' ? wordsToExport : `${ util.getText('Words') } - ${wordsToExport.length}`}`;
-    });
-
-    async function triggerExport() { // Changed to async as it calls async operations like ankiPackage.writeToFile
-      const wordsToExport = getValidWordsForExport();
+    triggerExport() { // Changed to async as it calls async operations like ankiPackage.writeToFile
+      const wordsToExport = this.getValidWordsForExport();
       if (typeof wordsToExport === 'string') {
-        props.showMessage(wordsToExport, 'warning');
+        this.showMessage(wordsToExport, 'warning');
         closeDialog();
         return;
       }
       
       if (!SQL) {
-        props.showMessage('SQL.js not initialized. Please ensure it is loaded.', 'error');
-        closeDialog();
+        this.showMessage('SQL.js not initialized. Please ensure it is loaded.', 'error');
         return;
       }
 
-      const modelId = get_id_from_name(nodeType.value);
+      const modelId = this.get_id_from_name(this.nodeType);
       try {
         const ankiModel = new Model({
           id: modelId,
-          name: nodeType.value,
+          name: this.nodeType,
           flds: [
             { name: 'Front' },
             { name: 'Back' },
@@ -159,7 +187,7 @@ export default {
           css: `.card { font-family: arial; font-size: 1.5rem; text-align: center; color: black; background-color: white; }`,
         });
 
-        const ankiDeck = new Deck(modelId + 1, deckName.value);
+        const ankiDeck = new Deck(modelId + 1, this.deckName);
 
         wordsToExport.forEach(item => {
           const note = new Note(ankiModel, [
@@ -168,7 +196,7 @@ export default {
             util.get_sound_url(item),
             item.image,
             item.context,
-            '', // Transcription field can be empty or filled based on your data
+            item.transcription || '',
           ]);
           ankiDeck.addNote(note);
         });
@@ -183,27 +211,16 @@ export default {
         ankiPackage.writeToFile(`duo2anki - ${ util.getCurrentCourse() }.apkg`);
       } catch (error) {
         console.error('Error exporting to Anki:', error);
-        props.showMessage('Error exporting to Anki. See console for details.', 'error');
-      } finally {
-        closeDialog();
+        this.showMessage('Error exporting to Anki. See console for details.', 'error');
       }
     }
-    
-    // Expose methods to the template via the setup context
-    return {
-      dialog,
-      deckName,
-      nodeType,
-      openDialog,
-      closeDialog,
-      triggerExport,
-      util, // Expose util for template usage
-      exportDialogTitle
-    };
-  }
-};
+}
+}
 </script>
 
-<style scoped>
-/* Add any specific styles for your dialog here */
+<style>
+.error-link {
+  color: white;
+  text-decoration: underline;
+}
 </style>

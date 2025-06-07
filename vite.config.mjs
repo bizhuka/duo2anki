@@ -18,7 +18,11 @@ export default defineConfig({
     rollupOptions: {
       input: {
         sidepanel: fileURLToPath(new URL('./sidepanel.html', import.meta.url)),
-        background: fileURLToPath(new URL('./src/background.js', import.meta.url)) // Added background script entry
+        background: fileURLToPath(new URL('./src/background.js', import.meta.url)), // Added background script entry
+
+        // Games
+        sconstructor: fileURLToPath(new URL('./src/games/SConstructor/index.html', import.meta.url)),
+        scard: fileURLToPath(new URL('./src/games/SCard/index.html', import.meta.url)),
       },
       output: {
         entryFileNames: (chunkInfo) => {

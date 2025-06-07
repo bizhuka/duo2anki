@@ -7,18 +7,21 @@
             :loading="loadingButton" :dataLang="optionsData.pluginLanguage" @click="loadWords" />
           <ActionButton icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
             :dataLang="optionsData.pluginLanguage" @click="openContextDialog" />
-          <!-- :loading="ankiLoading.export" -->
-          <ActionButton icon="mdi-upload"
-            :tooltipText="util.getText('Anki')"
-            color="success"
-            :disabled="!db_words.length"
-            @click="openAnkiExportDialog"/>
           <ActionButton icon="mdi-delete" :tooltipText="util.getText('Delete all')" color="error"
             :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="clearHistory" />
         </div>
 
-      <v-text-field append-icon="mdi-magnify" autofocus density="compact" v-model="search" clearable hide-details
-          :label="util.getText('Search')"/>
+      <v-text-field autofocus density="compact" v-model="search" clearable hide-details
+          :label="util.getText('Search')">
+        <template v-slot:append-inner v-if="search && !db_words.some(word => word.front.toLowerCase() === search.trim().toLowerCase())">
+          <v-tooltip location="top">
+            <template v-slot:activator="{ props }">
+              <v-icon v-bind="props" @click="handleAddWord" color="success">mdi-plus</v-icon>
+            </template>
+            <span>{{ util.getText('Add new word') }}</span>
+          </v-tooltip>
+        </template>
+      </v-text-field>
       <v-pagination v-model="page" :length="totalPages" density="compact" />
     </v-card>
 
@@ -75,23 +78,16 @@
       :optionsData="optionsData" />
     <ConfirmDialog ref="confirmDialog" :optionsData="optionsData" />
     <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words" />
-    <AnkiExportDialog
-      ref="ankiExportDialog"
-      :db_words="db_words"
-      :optionsData="optionsData"
-      :saveOptions="saveOptions"
-      :showMessage="showMessage"
-    />
   </div>
 </template>
 
 <script>
-import { util } from '../lib/util.js'; // Import util directly
+import { util } from '../lib/util.js';
 import ContextDialog from './ContextDialog.vue';
-import EditDialog from './EditDialog.vue'; // Import EditDialog
-import ConfirmDialog from './small/ConfirmDialog.vue'; // Import ConfirmDialog
-import ActionButton from './small/ActionButton.vue'; // Import the new ActionButton component
-import AnkiExportDialog from './small/AnkiExportDialog.vue'; // Import the new dialog
+import EditDialog from './EditDialog.vue';
+import ConfirmDialog from './small/ConfirmDialog.vue';
+import ActionButton from './small/ActionButton.vue';
+import { processContexts } from '../lib/contextProcessor.js';
 
 const DUOLINGO_WORDS_URL = 'https://www.duolingo.com/practice-hub/words';
 
@@ -229,7 +225,13 @@ export default {
       if (!updatedWord) return;
       try {
         this.loadingTable = true;
-        await this.dbProxy.updateWord(updatedWord);
+        
+        if(updatedWord.id === util.WORD_IS_NEW) {
+          delete updatedWord.id;
+          await this.dbProxy.addWords([updatedWord]);
+        } else {
+          await this.dbProxy.updateWord(updatedWord);
+        }
 
         this.$emit('refresh-words'); // Ask parent to reload
         this.showMessage(util.getText('Word "{0}" saved successfully.', [updatedWord.front]), 'success');
@@ -243,7 +245,22 @@ export default {
 
     // --- Dialog Triggers ---
     handleEditRequest(item) {
+      console.log(item);
       this.$refs.editDialog.methods.edit_popup(item);
+    },
+
+    async handleAddWord() {
+      await processContexts([{ id: util.WORD_IS_NEW, front: this.search }], this.optionsData, (wordsWithContext) => {
+        const course_info = util.get_course_info(util.options.current_course_id);
+
+        // jsut 1 word
+        const newWord = wordsWithContext[0];
+        newWord.course_id = util.options.current_course_id;
+        newWord.targetLang = course_info.targetLang;
+        newWord.sourceLang = course_info.sourceLang;
+
+        this.$refs.editDialog.methods.add_new_word(newWord);
+      });
     },
 
     openContextDialog() {
@@ -264,20 +281,9 @@ export default {
       });
     },
 
-    // --- Other Actions ---
     playSound(item) {
-      util.playSound(item); // Use imported util
-    },
-
-    openAnkiExportDialog() {
-      if (this.$refs.ankiExportDialog) {
-        this.$refs.ankiExportDialog.openDialog();
-      } else {
-        console.error('AnkiExportDialog ref not found');
-        this.showMessage('Could not open Anki export dialog.', 'error');
-      }
-    },
-    // exportToFile and get_id_from_name methods are removed from here
+      util.playSound(item);
+    }
   },
 
   async mounted() {

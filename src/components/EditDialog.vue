@@ -3,13 +3,17 @@
     <!-- Render card content only if editingWord exists -->
     <v-card v-if="dialog.editingWord" density="compact" style="position: relative;"> <!-- Ensure positioning context -->
       <!-- Left Chevron Button -->
-      <ChevronButton direction="left" :tooltip-text="util.getText('Previous Word (Left Arrow)')" :open-delay="1000"
+      <ChevronButton v-if="dialog.editingWord.id !== util.WORD_IS_NEW"
+        direction="left" :tooltip-text="util.getText('Previous Word (Left Arrow)')" :open-delay="1000"
         @click="methods.edit_popup(dialog.editingWord, -1)" />
       <!-- Right Chevron Button -->
-      <ChevronButton direction="right" :tooltip-text="util.getText('Next Word (Right Arrow)')" :open-delay="1000"
+      <ChevronButton v-if="dialog.editingWord.id !== util.WORD_IS_NEW"
+        direction="right" :tooltip-text="util.getText('Next Word (Right Arrow)')" :open-delay="1000"
         @click="methods.edit_popup(dialog.editingWord, 1)" />
       <v-card-title>
-        {{ util.getText('Edit Word - №') }}{{ dialog.editingIndex + 1 }}
+        {{ dialog.editingWord.id === util.WORD_IS_NEW?
+             util.getText('Add new word'):
+             util.getText('Edit Word - №') + dialog.editingIndex + 1 }}
         <v-btn icon="mdi-close" variant="text" density="compact" size="x-large" @click="methods.closeDialog"
           style="position: absolute; top: 8px; right: 8px;"></v-btn>
       </v-card-title>
@@ -36,6 +40,9 @@
             </template>
           </v-text-field>
 
+          <RichTextEditor v-if="dialog.showRichText" v-model="dialog.editingWord.transcription" :label="'Hint or transcription'"
+            min-height="1.5rem" class="mb-2" :optionsData="optionsData" :hideToolbar="true"/>
+
           <!-- Translation - Find back image-->
           <RichTextEditor v-if="dialog.showRichText" v-model="dialog.editingWord.back" :label="util.getText('Translation')"
             min-height="2rem" class="mb-2" :handlers="{ customButton1Click: methods.handleFindImageFromBack }"
@@ -59,7 +66,8 @@
       <v-card-actions>
         <v-spacer></v-spacer>
         <!-- Delete button -->
-        <v-btn color="error" text @click="methods.deleteWord" density="compact" prepend-icon="mdi-delete"
+        <v-btn v-if="dialog.editingWord.id !== util.WORD_IS_NEW"
+          color="error" text @click="methods.deleteWord" density="compact" prepend-icon="mdi-delete"
           style="text-transform: none;">{{ util.getText('Delete') }}</v-btn>
         <!-- Save emits the local copy -->
         <v-btn color="success" text @click="methods.saveEdit" density="compact" style="text-transform: none;">{{ util.getText('Save') }}</v-btn>
@@ -200,26 +208,33 @@ export default {
         }
 
         dialog.editingIndex = (currentIndex + shift + props.filteredWords.length) % props.filteredWords.length;
-        const newWord = props.filteredWords[dialog.editingIndex];
+        methods.set_word(props.filteredWords[dialog.editingIndex], shift !== 0);
+      },
 
+      async add_new_word(newWord) {
+        methods.set_word(newWord, true);
+        methods.findImageFromFront();
+      },
+
+      async set_word(setWord, setFocus) {
         // Store the new word for comparison
-        dialog.prevWord = newWord;
+        dialog.prevWord = setWord;
 
         // Ensure 'image' property exists, initialize if not
-        dialog.editingWord = newWord ? {
+        dialog.editingWord = setWord ? {
           image: null,
           context: '<p></p>', // TODO Initialize context to an empty paragraph
-          ...newWord
+          ...setWord
         } : null;
 
         dialog.show = true; // Show the dialog
 
-        if (shift !== 0) {
+        if (setFocus) {
           await methods.setDialogFocus(); // Wait for DOM update before focusing
           await methods.updateImageTab();
         }
         methods.playCurrentWordSound();
-      },
+      }, 
 
       async setDialogFocus() {
         // This helps ensure editors are properly re-rendered if needed

@@ -5,10 +5,55 @@
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>duo2anki</title>
+    <style>
+      body {
+          width: 100%;
+          height: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/entry.js"></script>
-    <script type="module" src="/src/sidepanel.js"></script>    
+
+<!--------------------------------------------------------------->
+    <script type="module">
+      // Inlined content from src/entry.js
+      import initSqlJs from 'sql.js';
+
+      const config = {
+          locateFile: filename => `/js/sql/${filename}`
+      };
+
+      var SQL;
+
+      initSqlJs(config).then(function (sql) {
+          SQL = sql;
+          window.SQL = sql;
+      }).catch(err => {
+          console.error("Error initializing sql.js:", err);
+      });
+    </script>
+<!--------------------------------------------------------------->
+    <script type="module">
+      // Inlined content from src/sidepanel.js
+      // Plugins
+      import { registerPlugins } from '@/plugins';
+
+      // Components
+      import App from './src/App.vue';
+
+      // Composables
+      import { createApp } from 'vue';
+
+      // Create app with initial props
+      const app = createApp(App, {})
+
+      // Initialize plugins and mount app
+      registerPlugins(app).then(() => {
+        app.mount('#app');
+        // Connect to background script to signal the panel is open
+        chrome.runtime.connect({ name: 'sidepanel' });
+      })
+    </script>
   </body>
 </html>

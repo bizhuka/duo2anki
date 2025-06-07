@@ -26,6 +26,8 @@ export const util = {
     STOP: "stop",
   },
 
+  WORD_IS_NEW: 9007199254740777,
+
   SOUND_MODE: {
     FRONT_WORD: 0,
     FRONT_WORD_WITH_CONTEXT: 1,
@@ -62,7 +64,7 @@ export const util = {
       : null;
   },
 
-  playSound: function (item) {
+  playSound: function (item, play = true) {
     if (this.currentAudio)
       try {
         this.currentAudio.pause();
@@ -73,8 +75,10 @@ export const util = {
     const soundUrl = this.get_sound_url(item);
     if (soundUrl) {
       this.currentAudio = new Audio(soundUrl);
-      this.currentAudio.play();
+      if(play)
+        this.currentAudio.play();
     }
+    return this.currentAudio;
   },
 
   get_course_info: function (course_id) {
@@ -113,7 +117,6 @@ export const util = {
   },
 
   async _set_options(options) {
-    debugger
     for (let key in options) {
       if (this.options.hasOwnProperty(key)) {
         if (Array.isArray(this.options[key])) {

@@ -23,6 +23,8 @@
           <v-card density="compact" style="height: 100%;">
             <v-tabs v-model="activeTab" bg-color="primary" density="compact">
               <v-tab value="words" density="compact" prepend-icon="mdi-magnify" style="text-transform: none;">{{ util.getText('Words') }}</v-tab>
+              <v-tab value="games" density="compact" prepend-icon="mdi-gamepad-variant" style="text-transform: none;">Games</v-tab>
+              <v-tab value="anki" density="compact" prepend-icon="mdi-cards" style="text-transform: none;">{{ util.getText('Anki') }}</v-tab>
               <v-tooltip location="bottom" :open-delay="1000">
                 <template v-slot:activator="{ props }">
                   <v-tab value="hotkeys" density="compact" prepend-icon="mdi-keyboard-settings-outline" v-bind="props"></v-tab>
@@ -38,6 +40,18 @@
                   <WordsTab :db_words="db_words" :optionsData="optionsData" :saveOptions="saveOptions"
                     :dbProxy="dbProxy" :showMessage="showMessage" @refresh-words="loadWordsFromDb" />
                 </v-window-item>
+
+                <!-- Games Tab -->
+                <v-window-item value="games" class="fill-height">
+                  <GamesTab />
+                </v-window-item>
+
+                <!-- Anki -->
+                <v-window-item value="anki">
+                  <Anki :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"
+                    :showMessage="showMessage" />
+                </v-window-item>
+
                 <!-- Hotkeys Tab -->
                 <v-window-item value="hotkeys">
                   <HotkeysInfo :optionsData="optionsData" />
@@ -59,12 +73,13 @@ import { ref } from 'vue';
 import HotkeysInfo from './components/small/HotkeysInfo.vue';
 import LanguageSelector from './components/small/LanguageSelector.vue'; // Import the new component
 import WordsTab from './components/WordsTab.vue';
+import GamesTab from './components/GamesTab.vue';
 
 import { util } from './lib/util.js';
 import { DbProxy } from './lib/database.js';
 
 export default {
-  components: { HotkeysInfo, WordsTab, LanguageSelector }, // Register LanguageSelector
+  components: { HotkeysInfo, WordsTab, LanguageSelector, GamesTab }, // Register LanguageSelector
   data() {
     return {
       activeTab: null,
@@ -80,6 +95,9 @@ export default {
     currentCourse() {
       return util.getCurrentCourse();
     },
+    chromeRuntimeId() {
+      return chrome.runtime.id;
+    }
   },
 
   methods: {
