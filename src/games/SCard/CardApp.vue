@@ -12,7 +12,6 @@
         <Flashcard
           :cardData="cardDisplayData"
           :showAnswer="showAnswer"
-          @replay-sound="playCurrentCardSound()"
           ref="flashcardComponent"
           class="mb-4"
         />
@@ -64,7 +63,6 @@ export default {
       isLoading: true,
       showAnswer: false,
       gameFinished: false,
-      currentSound: null,
     };
   },
   computed: {
@@ -76,15 +74,7 @@ export default {
     },
     cardDisplayData() {
       if (!this.currentCard) return null;
-      const item = this.currentCard;
-      return {
-        id: item.id,
-        Front: item.front,
-        Back: item.back,
-        Image: item.image,
-        Context: item.context,
-        Transcription: item.transcription,
-      };
+      return this.currentCard;
     }
   },
   methods: {
@@ -120,14 +110,7 @@ export default {
       if (this.$refs.flashcardComponent && this.$refs.flashcardComponent.$el) {
         anime.set(this.$refs.flashcardComponent.$el, { translateX: 0, opacity: 1 });
       }
-      this.currentSound = util.playSound(this.currentCard, false);
-    },
-    playCurrentCardSound() {
-      if (this.currentSound) {
-        this.currentSound.pause();
-        this.currentSound.currentTime = 0;
-        this.currentSound.play();
-      }
+      util.playSound(this.currentCard, false);
     },
     handleShowAnswerClick() {
       this.showAnswer = true;
@@ -170,10 +153,6 @@ export default {
     await this.initializeGame();
   },
   beforeUnmount() {
-    if (this.currentSound) {
-      this.currentSound.pause();
-      this.currentSound = null;
-    }
   }
 };
 </script>

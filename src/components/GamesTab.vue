@@ -17,6 +17,13 @@
               </v-btn>
             </template>
           </v-tooltip>
+          <v-tooltip location="bottom" text="Word Constructor">
+            <template v-slot:activator="{ props }">
+              <v-btn v-bind="props" value="sconstructor_bychar">
+                <v-icon>mdi-alphabetical-variant</v-icon>
+              </v-btn>
+            </template>
+          </v-tooltip>
         </v-btn-toggle>
       </v-col>
       <v-col cols="auto" class="pa-0 pl-2">
@@ -31,11 +38,14 @@
     </v-row>
 
     <v-window v-model="selectedGame" class="fill-height">
-      <v-window-item value="scard" class="fill-height d-flex justify-center align-center">
+      <v-window-item value="scard" class="fill-height">
         <CardApp />
       </v-window-item>
-      <v-window-item value="sconstructor" class="fill-height d-flex justify-center align-center">
+      <v-window-item value="sconstructor" class="fill-height">
         <ConsApp />
+      </v-window-item>
+      <v-window-item value="sconstructor_bychar" class="fill-height">
+        <ConsApp consMode="byChar" />
       </v-window-item>
     </v-window>
   </v-container>
@@ -61,11 +71,15 @@ export default {
       return chrome.runtime.id;
     },
     fullscreenLink() {
-      if (this.selectedGame === 'scard') {
-        return `/src/games/SCard/index.html`;
-      } else {
-        return `/src/games/SConstructor/index.html`;
+      switch (this.selectedGame) {
+        case 'scard':
+          return `/src/games/SCard/index.html`;
+        case 'sconstructor':
+          return `/src/games/SConstructor/index.html`;
+        case 'sconstructor_bychar':
+          return `/src/games/SConstructor/index.html?consMode=byChar`;
       }
+      return null;
     },
   },
 };

@@ -64,7 +64,7 @@ export const util = {
       : null;
   },
 
-  playSound: function (item, play = true) {
+  playSound: function (item, play = true, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
     if (this.currentAudio)
       try {
         this.currentAudio.pause();
@@ -72,7 +72,22 @@ export const util = {
         this.currentAudio = null;
       }
 
-    const soundUrl = this.get_sound_url(item);
+    let word = {};
+    switch (mode) {
+        case this.SOUND_MODE.FRONT_WORD:
+          word = { front: item.front, targetLang: item.targetLang };
+          break;
+        case this.SOUND_MODE.FRONT_WORD_WITH_CONTEXT:
+          word = item;
+          break;
+        case this.SOUND_MODE.CONTEXT_ONLY:
+          word = { front: '', context: item.context, targetLang: item.targetLang };
+          break;
+        default: // case this.SOUND_MODE.OFF:
+          return null;
+    }
+
+    const soundUrl = this.get_sound_url(word);
     if (soundUrl) {
       this.currentAudio = new Audio(soundUrl);
       if(play)

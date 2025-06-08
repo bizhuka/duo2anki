@@ -4,8 +4,15 @@
     <div class="text-h6 mb-4">{{ allSentences.length }} | 😊 {{ correctAnswersCount }} | 😟 {{ incorrectAnswersCount }}</div>
     
     <div v-if="currentSentence">
+      <div class="d-flex justify-center align-center ga-2 mb-4">
+        <div class="text-h6">{{ currentSentence.sourcePhrase }}</div>
+        <replay-sound-button
+            ref="replayButton"
+            :card="currentSentence"
+            :sound-mode="consMode === 'byChar' ? util.SOUND_MODE.FRONT_WORD : util.SOUND_MODE.CONTEXT_ONLY"
+        />
+      </div>
       <WordList
-        :title="`${ currentSentence.sourcePhrase } (${ currentSentence.front })`"
         :words="availableWords"
         emptyListMessage=""
         @wordClicked="handleWordSelected"
@@ -50,21 +57,31 @@
   </div>
 </template>
 
+<script setup>
+  import { util } from '../../lib/util.js';
+</script>
+
 <script>
 import WordList from './components/WordList.vue';
 import ReviewControls from '../components/ReviewControls.vue';
+import ReplaySoundButton from '../components/ReplaySoundButton.vue';
 import { DbProxy } from '../../lib/database.js';
-import { util } from '../../lib/util.js';
 
 export default {
+  props: {
+    consMode: {
+      type: String,
+      default: '',
+    },
+  },
   components: {
     WordList,
     ReviewControls,
+    ReplaySoundButton,
   },
   data() {
     return {
       dbWords: [],
-      sound: null,
       allSentences: [],
       currentSentenceIndex: 0,
       dbProxy: null,
@@ -81,7 +98,6 @@ export default {
       let item = null
       if (this.allSentences.length > 0 && this.currentSentenceIndex < this.allSentences.length) {
         item = this.allSentences[this.currentSentenceIndex];
-        this.sound = util.playSound(item, false)
       }
       return item;
     },
@@ -115,10 +131,17 @@ export default {
       }
       this.dbWords = await this.dbProxy.getCardsForReview();
 
-      this.allSentences = this.dbWords.map(element => {
-        const arr = util.delete_all_tags(element.context).split('→');
-        element.targetPhrase = arr[0].trim();
-        element.sourcePhrase = arr[1].trim();
+      this.allSentences = this.dbWords.map(element => {        
+        if(this.consMode === 'byChar') {
+          element.targetPhrase = element.front.split('').join(' ');
+          element.sourcePhrase = util.delete_all_tags(element.back);
+        } else {
+          // Default to target mode
+          const arr = util.delete_all_tags(element.context).split('→');
+          element.targetPhrase = arr[0].trim();
+          element.sourcePhrase = `${ arr[1].trim() } (${ element.front })`;
+        }
+
         return element;
       });
     },
@@ -169,8 +192,9 @@ export default {
           }
         });
 
-        if(this.sound)
-          this.sound.play();
+        if (this.$refs.replayButton) {
+          this.$refs.replayButton.replay();
+        }
       } else {
         this.isCorrectAnswer = false;
         this.incorrectAnswersCount++;

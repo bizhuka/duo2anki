@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>Sentence constructor</title>
+    <title>Constructor</title>
     <style>
       body {
           width: 100%;
@@ -25,7 +25,9 @@
       import { util } from '../../lib/util.js';
 
       // Create app with initial props
-      const app = createApp(App, {})
+      const urlParams = new URLSearchParams(window.location.search);
+      const consMode = urlParams.get('consMode');
+      const app = createApp(App, { consMode: consMode })
 
       // Initialize plugins and mount app
       registerPlugins(app).then(async () => {

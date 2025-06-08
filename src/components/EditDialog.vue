@@ -257,25 +257,8 @@ export default {
         }
       },
 
-      async playCurrentWordSound(mode = null) {
-        let word = null;
-        switch (mode || util.options.soundMode) {
-          case util.SOUND_MODE.FRONT_WORD:
-            word = { front: dialog.editingWord.front, targetLang: dialog.editingWord.targetLang };
-            break;
-          case util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT:
-            word = dialog.editingWord;
-            break;
-          case util.SOUND_MODE.OFF:
-            word = {}; // Stop sound
-            break;
-          case util.SOUND_MODE.CONTEXT_ONLY:
-            word = { front: '', context: dialog.editingWord.context, targetLang: dialog.editingWord.targetLang };
-            break;
-        }
-        if (word) {
-          util.playSound(word); // Play sound for the word
-        }
+      async playCurrentWordSound(mode = null) {        
+        util.playSound(dialog.editingWord, true, mode || util.options.soundMode); // Play sound for the word
       },
 
       handleContextPlaySound() {
