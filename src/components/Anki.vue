@@ -56,7 +56,7 @@
 
             <v-col cols="12">
                   <v-checkbox
-                    label="Include schedule information"
+                    :label="util.getText('includeScheduleInformation')"
                     density="compact"
                     hide-details
                     readonly="true"/>
@@ -179,7 +179,7 @@ export default {
           ],
           tmpls: [
             {
-              name: 'Main template',
+              name: util.getText('mainTemplate'),
               qfmt: `<div>{{Front}}</div><div class="transcription">{{Transcription}}</div>[sound:{{Sound}}]`,
               afmt: `<div>{{FrontSide}}</div><hr id=answer><div>{{Back}}</div><div><img src="{{Image}}"></div><div class="context">{{Context}}</div>`,
             },
@@ -211,7 +211,7 @@ export default {
         ankiPackage.writeToFile(`duo2anki - ${ util.getCurrentCourse() }.apkg`);
       } catch (error) {
         console.error('Error exporting to Anki:', error);
-        this.showMessage('Error exporting to Anki. See console for details.', 'error');
+        this.showMessage(util.getText('errorExportingToAnki'), 'error');
       }
     }
 }

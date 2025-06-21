@@ -6,10 +6,11 @@
     <div v-if="currentSentence">
       <div class="d-flex justify-center align-center ga-2 mb-4">
         <div class="text-h6">{{ currentSentence.sourcePhrase }}</div>
-        <replay-sound-button
+        <ReplaySoundButton
             ref="replayButton"
             :card="currentSentence"
-            :sound-mode="consMode === 'byChar' ? util.SOUND_MODE.FRONT_WORD : util.SOUND_MODE.CONTEXT_ONLY"
+            :modes="currentSoundModes"
+            :autoOff="true"
         />
       </div>
       <WordList
@@ -29,7 +30,7 @@
 
       <div class="controls-container" style="min-height: 52px;">
         <div v-if="!answerChecked" class="d-flex justify-center ga-2">
-          <v-btn @click="checkAnswer" :disabled="availableWords.length !== 0 || (answerChecked && !isCorrectAnswer)" title="Check Answer" color="success">
+          <v-btn @click="checkAnswer" :disabled="isCheckDisabled()" :title="util.getText('checkAnswer')" color="success">
             <v-icon>mdi-check</v-icon>
           </v-btn>
         </div>
@@ -38,7 +39,7 @@
             :card="currentSentence"
             :dbProxy="dbProxy"
             @review-selected="handleReviewSelected"/>
-          <v-btn v-else @click="nextSentence" title="Next Sentence" color="primary">
+          <v-btn v-else @click="nextSentence" :title="util.getText('nextSentence')" color="primary">
             <v-icon>mdi-arrow-right</v-icon>
           </v-btn>
         </div>
@@ -46,7 +47,7 @@
 
     </div>
     <div v-else-if="allSentences.length > 0 && currentSentenceIndex >= allSentences.length" class="py-8">
-      <v-btn @click="restartQuiz" title="Start Again" size="x-large" icon color="primary">
+      <v-btn @click="restartQuiz" :title="util.getText('startAgain')" size="x-large" icon color="primary">
         <v-icon>mdi-refresh</v-icon>
       </v-btn>
     </div>
@@ -94,6 +95,17 @@ export default {
     };
   },
   computed: {
+    currentSoundModes(){
+      switch(this.consMode){
+        case 'byChar':
+          return [util.SOUND_MODE.OFF, util.SOUND_MODE.FRONT_WORD]
+        case 'frontGame':
+          return [util.SOUND_MODE.OFF, util.SOUND_MODE.FRONT_WORD]
+        case 'backGame':
+          return [util.SOUND_MODE.OFF, util.SOUND_MODE.FRONT_WORD]
+      }
+      return [util.SOUND_MODE.OFF, util.SOUND_MODE.CONTEXT_ONLY]      
+    },
     currentSentence() {
       let item = null
       if (this.allSentences.length > 0 && this.currentSentenceIndex < this.allSentences.length) {
@@ -118,12 +130,31 @@ export default {
     },
     finalDisplayWords() {
       if (this.isCorrectAnswer && this.currentSentence) {
-        return this.currentSentence.targetPhrase.split(' ');
+        switch(this.consMode){
+          case 'frontGame':
+            return util.delete_all_tags(this.currentSentence.back)
+          case 'backGame':
+            return util.delete_all_tags(this.currentSentence.front)
+          default:
+            return this.currentSentence.targetPhrase.split(' ');
+        }        
       }
       return this.constructedWords;
     },
   },
   methods: {
+    isCheckDisabled() {
+      if(this.answerChecked && !this.isCorrectAnswer)
+        return true;
+
+      switch(this.consMode){
+        case 'frontGame':
+        case 'backGame':
+          return this.constructedWords.length !== 1
+        default:
+          return this.availableWords.length !== 0;
+      }
+    },
     async loadSentences() {
       if (!this.dbProxy) {
         console.error("DbProxy not initialized in loadSentences");
@@ -131,19 +162,45 @@ export default {
       }
       this.dbWords = await this.dbProxy.getCardsForReview();
 
-      this.allSentences = this.dbWords.map(element => {        
-        if(this.consMode === 'byChar') {
-          element.targetPhrase = element.front.split('').join(' ');
-          element.sourcePhrase = util.delete_all_tags(element.back);
-        } else {
-          // Default to target mode
-          const arr = util.delete_all_tags(element.context).split('→');
-          element.targetPhrase = arr[0].trim();
-          element.sourcePhrase = `${ arr[1].trim() } (${ element.front })`;
+      this.allSentences = this.dbWords.map(element => {
+        const frontWord = util.delete_all_tags(element.front);
+        const backWord = util.delete_all_tags(element.back)
+
+        const arr = util.delete_all_tags(element.context).split('→');
+        const frontContext = arr[0].trim();
+        const backContext = arr[1].trim()
+
+        switch(this.consMode){
+          case 'byChar':
+            element.targetPhrase = element.front.split('').join(' ');
+            element.sourcePhrase = backWord;
+            break;
+          case 'frontGame':
+            const distractorBackWords = this.getDistractorWords(element.id, 'back');
+            element.targetPhrase = distractorBackWords.join(' ') + ' ' + backWord;
+            element.sourcePhrase = frontWord;
+            break;
+          case 'backGame':
+            const distractorFrontWords = this.getDistractorWords(element.id, 'front');
+            element.targetPhrase = distractorFrontWords.join(' ') + ' ' + frontWord;
+            element.sourcePhrase = backWord;
+            break;
+          default:
+            // Default to target mode            
+            element.targetPhrase = frontContext;
+            element.sourcePhrase = `${ backContext } (${ element.front })`;
         }
 
         return element;
       });
+    },
+    getDistractorWords(excludeId, type, count = 2) {
+      const otherWords = this.dbWords.filter(word => word.id !== excludeId);
+      if (otherWords.length < count) {
+        count = otherWords.length;
+      }
+      const shuffled = this.shuffleArray([...otherWords]);
+      return shuffled.slice(0, count).map(word => util.delete_all_tags(word[type]));
     },
     shuffleArray(array) {
       let currentIndex = array.length, randomIndex;
@@ -176,14 +233,26 @@ export default {
       this.constructedWords.splice(originalIndex, 1);
       this.answerChecked = false;
     },
+
+    compareAnswer(){
+      switch(this.consMode){
+        case 'frontGame':
+          return this.constructedWords[0] === util.delete_all_tags(this.currentSentence.back)
+        case 'backGame':
+          return this.constructedWords[0] === util.delete_all_tags(this.currentSentence.front)
+      }
+
+      const constructed = this.constructedWords.join(' ');
+      const correct = this.currentCorrectTargetWords.join(' ');
+      return constructed === correct
+    },
+
     async checkAnswer() {
       if (!this.currentSentence || !this.dbProxy) return;
       this.answerChecked = true;
-      const constructed = this.constructedWords.join(' ');
-      const correct = this.currentCorrectTargetWords.join(' ');
 
-      if (constructed === correct) {
-        this.isCorrectAnswer = true;
+      this.isCorrectAnswer = this.compareAnswer();
+      if (this.isCorrectAnswer) {
         this.correctAnswersCount++;
         
         this.$nextTick(() => {
@@ -191,17 +260,16 @@ export default {
             this.$refs.constructedSentenceWordList.animateSuccess();
           }
         });
-
-        if (this.$refs.replayButton) {
-          this.$refs.replayButton.replay();
-        }
       } else {
-        this.isCorrectAnswer = false;
         this.incorrectAnswersCount++;
         if (this.$refs.constructedSentenceWordList) {
           this.$refs.constructedSentenceWordList.animateFailure();
         }
       }
+
+      // if (this.$refs.replayButton) {
+      //   this.$refs.replayButton.replay();
+      // }
     },
     async handleReviewSelected(quality) {
       if (!this.currentSentence || !this.dbProxy) return;

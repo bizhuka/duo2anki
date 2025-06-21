@@ -6,7 +6,7 @@
             :tooltipText="hasDuolingoPage ? util.getText('Load Words') : util.getText('Open Words Page')" color="primary"
             :loading="loadingButton" :dataLang="optionsData.pluginLanguage" @click="loadWords" />
           <ActionButton icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
-            :dataLang="optionsData.pluginLanguage" @click="openContextDialog" />
+            :loading="loadingTable" :dataLang="optionsData.pluginLanguage" @click="openContextDialog" />
           <ActionButton icon="mdi-delete" :tooltipText="util.getText('Delete all')" color="error"
             :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="clearHistory" />
         </div>
@@ -18,7 +18,7 @@
             <template v-slot:activator="{ props }">
               <v-icon v-bind="props" @click="handleAddWord" color="success">mdi-plus</v-icon>
             </template>
-            <span>{{ util.getText('Add new word') }}</span>
+            <span>{{ util.getText('addNewWord') }}</span>
           </v-tooltip>
         </template>
       </v-text-field>
@@ -77,16 +77,12 @@
     <EditDialog ref="editDialog" @save="handleSaveWord" :onDeleteWord="deleteWord" :filteredWords="filteredWords"
       :optionsData="optionsData" />
     <ConfirmDialog ref="confirmDialog" :optionsData="optionsData" />
-    <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words" />
+    <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"/>
   </div>
 </template>
 
 <script>
 import { util } from '../lib/util.js';
-import ContextDialog from './ContextDialog.vue';
-import EditDialog from './EditDialog.vue';
-import ConfirmDialog from './small/ConfirmDialog.vue';
-import ActionButton from './small/ActionButton.vue';
 import { processContexts } from '../lib/contextProcessor.js';
 
 const DUOLINGO_WORDS_URL = 'https://www.duolingo.com/practice-hub/words';
@@ -142,6 +138,10 @@ export default {
     },
   },
   methods: {
+    addWordFromContextMenu(word) {
+      this.search = word;
+      this.handleAddWord();
+    },
     async getDuolingoTabId() {
       const allTabs = await chrome.tabs.query({ url: DUOLINGO_WORDS_URL });
       return allTabs.length > 0 ? allTabs[0].id : null;
@@ -263,22 +263,23 @@ export default {
       });
     },
 
-    openContextDialog() {
-      this.$refs.contextDialog.context_popup({
-        action: async (wordsWithContext) => {
-          try {
-            this.loadingTable = true;
+    async openContextDialog() {
+      this.loadingTable = true;
+      try {
+        await this.$refs.contextDialog.context_popup({
+          action: async (wordsWithContext) => {
+            // This action is awaited by the contextProcessor now
             await this.dbProxy.updateWordsContext(wordsWithContext);
-
             this.$emit('refresh-words'); // Ask parent to reload
-            this.showMessage(util.getText('Word contexts updated successfully.'), 'success');
-          } catch (error) {
-            this.showMessage(error.message, 'error');
-          } finally {
-            this.loadingTable = false;
+            this.showMessage(wordsWithContext.length * this.optionsData.request_count + ` ` + util.getText('Word contexts updated successfully.'), 'success');
           }
-        }
-      });
+        });
+        this.loadingTable = false;
+      } catch (error) {
+        // This will catch errors from the API call or the action
+        this.showMessage(error.message, 'error');
+        this.loadingTable = false;
+      }
     },
 
     playSound(item) {

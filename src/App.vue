@@ -23,7 +23,7 @@
           <v-card density="compact" style="height: 100%;">
             <v-tabs v-model="activeTab" bg-color="primary" density="compact">
               <v-tab value="words" density="compact" prepend-icon="mdi-magnify" style="text-transform: none;">{{ util.getText('Words') }}</v-tab>
-              <v-tab value="games" density="compact" prepend-icon="mdi-gamepad-variant" style="text-transform: none;">Games</v-tab>
+              <v-tab value="games" density="compact" prepend-icon="mdi-gamepad-variant" style="text-transform: none;">{{ util.getText('games') }}</v-tab>
               <v-tab value="anki" density="compact" prepend-icon="mdi-cards" style="text-transform: none;">{{ util.getText('Anki') }}</v-tab>
               <v-tooltip location="bottom" :open-delay="1000">
                 <template v-slot:activator="{ props }">
@@ -37,7 +37,7 @@
               <v-window v-model="activeTab">
                 <!-- Words Tab -->
                 <v-window-item value="words">
-                  <WordsTab :db_words="db_words" :optionsData="optionsData" :saveOptions="saveOptions"
+                  <WordsTab ref="wordsTab" :db_words="db_words" :optionsData="optionsData" :saveOptions="saveOptions"
                     :dbProxy="dbProxy" :showMessage="showMessage" @refresh-words="loadWordsFromDb" />
                 </v-window-item>
 
@@ -101,6 +101,13 @@ export default {
   },
 
   methods: {
+    add_word_from_context(word) {
+      this.activeTab = 'words'; // Switch to the 'words' tab      
+      // Ensure the tab is rendered before calling the method
+      this.$nextTick(() => {
+        this.$refs.wordsTab.addWordFromContextMenu(word);
+      });
+    },
 
     showMessage(message, type = 'info') {
       this.$refs.infoAlert.showMessage(message, type);

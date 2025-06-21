@@ -12,7 +12,7 @@
         @click="methods.edit_popup(dialog.editingWord, 1)" />
       <v-card-title>
         {{ dialog.editingWord.id === util.WORD_IS_NEW?
-             util.getText('Add new word'):
+             util.getText('addNewWord'):
              util.getText('Edit Word - №') + dialog.editingIndex + 1 }}
         <v-btn icon="mdi-close" variant="text" density="compact" size="x-large" @click="methods.closeDialog"
           style="position: absolute; top: 8px; right: 8px;"></v-btn>
@@ -24,11 +24,11 @@
             hide-details readonly="true" class="mb-2"> <!-- Added margin-bottom -->
             <!-- Play sound with the word ONLY -->
             <template v-slot:append-inner>
-              <v-tooltip location="top" :text="util.getText('{0} (MediaPlayPause)', [dialog?.editingWord?.front])" :open-delay="1000">
-                <template v-slot:activator="{ props }">
-                  <v-icon v-bind="props" color="success" @click="methods.changeSoundMode">{{ soundIcon }}</v-icon>
-                </template>
-              </v-tooltip>
+              <ReplaySoundButton
+                :card="dialog.editingWord"
+                :modes="[util.SOUND_MODE.OFF, util.SOUND_MODE.FRONT_WORD, util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT]"
+                @sound-mode-changed="methods.setDialogFocus"
+              />
             </template>
             <!-- Search for image button -->
             <template v-slot:append>
@@ -40,7 +40,7 @@
             </template>
           </v-text-field>
 
-          <RichTextEditor v-if="dialog.showRichText" v-model="dialog.editingWord.transcription" :label="'Hint or transcription'"
+          <RichTextEditor v-if="dialog.showRichText" v-model="dialog.editingWord.transcription" :label="util.getText('hintOrTranscription')"
             min-height="1.5rem" class="mb-2" :optionsData="optionsData" :hideToolbar="true"/>
 
           <!-- Translation - Find back image-->
@@ -81,9 +81,10 @@
 <script>
 import { reactive, ref, watch, nextTick, computed } from 'vue';
 import { util } from '@/lib/util';
-import ChevronButton from './small/ChevronButton.vue';
-import ImageDropZone from './small/ImageDropZone.vue';
+import ReplaySoundButton from '@/games/components/ReplaySoundButton.vue';
+
 export default {
+  components: { ReplaySoundButton },
   emits: ['save'],
 
   props: {
@@ -110,17 +111,6 @@ export default {
       showRichText: true, // Control visibility of RichTextEditors
     });
     const saveDialog = ref(null); // Reference to the ConfirmDialog component
-
-    const soundIcon = computed(() => {
-      switch (util.options.soundMode) {
-        case util.SOUND_MODE.FRONT_WORD:
-          return 'mdi-volume-medium';
-        case util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT:
-          return 'mdi-volume-high';
-        case util.SOUND_MODE.OFF:
-          return 'mdi-volume-off';
-      }
-    });
 
     const handleKeydown = async (event) => {
       if (!dialog.show) return  // Only act if dialog is open
@@ -172,7 +162,7 @@ export default {
           prevValue = util.delete_all_linebreaks(prevValue);
           currentValue = util.delete_all_linebreaks(currentValue);
         }
-        //if(prevValue !== currentValue)console.log(`Property ${key} changed from ${prevValue} to ${currentValue}`);
+        // if(prevValue !== currentValue)console.log(`Property ${key} changed from ${prevValue} to ${currentValue}`);
         return prevValue !== currentValue;
       });
 
@@ -233,7 +223,7 @@ export default {
           await methods.setDialogFocus(); // Wait for DOM update before focusing
           await methods.updateImageTab();
         }
-        methods.playCurrentWordSound();
+        // TODO methods.playCurrentWordSound();
       }, 
 
       async setDialogFocus() {
@@ -258,19 +248,13 @@ export default {
       },
 
       async playCurrentWordSound(mode = null) {        
-        util.playSound(dialog.editingWord, true, mode || util.options.soundMode); // Play sound for the word
+        util.playSound(dialog.editingWord, mode || util.options.soundMode); // Play sound for the word
       },
 
       handleContextPlaySound() {
         methods.playCurrentWordSound(util.SOUND_MODE.CONTEXT_ONLY); // Play sound for context only
+        util.options.soundMode = util.SOUND_MODE.CONTEXT_ONLY;
         methods.setDialogFocus(); // Call the existing focus method
-      },
-
-      async changeSoundMode() {
-        util.options.soundMode = (util.options.soundMode + 1) % 3; // Cycle through sound modes
-        util.save_options({ soundMode: util.options.soundMode }); // Save the new sound mode
-        methods.playCurrentWordSound(); // Play sound for the current word
-        methods.setDialogFocus();
       },
 
       async closeDialog() {
@@ -322,7 +306,6 @@ export default {
       dialog,
       saveDialog, // <-- Expose the ref to the template
       methods,
-      soundIcon // Expose the computed property
     };
   }
 }

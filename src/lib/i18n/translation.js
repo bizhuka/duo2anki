@@ -1,42 +1,281 @@
-const duolingoCourses = [
-    { code: "ES", language: "Spanish" },
-    { code: "FR", language: "French" },
-    { code: "DE", language: "German" },
-    { code: "IT", language: "Italian" },
-    { code: "PT", language: "Portuguese" },
-    { code: "JA", language: "Japanese" },
-    { code: "KO", language: "Korean" },
-    { code: "ZH", language: "Chinese (Mandarin)" },
-    { code: "RU", language: "Russian" },
-    { code: "AR", language: "Arabic" },
-    { code: "NL", language: "Dutch" },
-    { code: "SV", language: "Swedish" },
-    { code: "GA", language: "Irish (Gaelic)" },
-    { code: "TR", language: "Turkish" },
-    { code: "NO", language: "Norwegian (Bokmål)" },
-    { code: "DA", language: "Danish" },
-    { code: "PL", language: "Polish" },
-    { code: "HI", language: "Hindi" },
-    { code: "EL", language: "Greek" },
-    { code: "CS", language: "Czech" },
-    { code: "HE", language: "Hebrew" },
-    { code: "VI", language: "Vietnamese" },
-    { code: "CY", language: "Welsh" },
-    { code: "UA", language: "Ukrainian" },
-    { code: "HU", language: "Hungarian" },
-    { code: "RO", language: "Romanian" },
-    { code: "SW", language: "Swahili" },
-    { code: "ID", language: "Indonesian" },
-    { code: "FI", language: "Finnish" },
-    { code: "NV", language: "Navajo" },
-    { code: "YI", language: "Yiddish" },
-    { code: "GD", language: "Scottish Gaelic" },
-    { code: "EO", language: "Esperanto" },
-    { code: "TLH", language: "Klingon" },
-    { code: "HV", language: "High Valyrian" },
-    { code: "HT", language: "Haitian Creole" },
-    { code: "ZU", language: "Zulu" }
-  ];
+export const duolingoCourses = [
+    {
+        "code": "ES",
+        "language": "Spanish",
+        "voices": [
+            "Spanish Female",
+            "Spanish Male",
+            "Spanish Latin American Female",
+            "Spanish Latin American Male"
+        ]
+    },
+    {
+        "code": "FR",
+        "language": "French",
+        "voices": [
+            "French Female",
+            "French Male",
+            "French Canadian Female",
+            "French Canadian Male"
+        ]
+    },
+    {
+        "code": "DE",
+        "language": "German",
+        "voices": [
+            "Deutsch Female",
+            "Deutsch Male"
+        ]
+    },
+    {
+        "code": "IT",
+        "language": "Italian",
+        "voices": [
+            "Italian Female",
+            "Italian Male"
+        ]
+    },
+    {
+        "code": "PT",
+        "language": "Portuguese",
+        "voices": [
+            "Brazilian Portuguese Female",
+            "Brazilian Portuguese Male",
+            "Portuguese Female",
+            "Portuguese Male"
+        ]
+    },
+    {
+        "code": "JA",
+        "language": "Japanese",
+        "voices": [
+            "Japanese Female",
+            "Japanese Male"
+        ]
+    },
+    {
+        "code": "KO",
+        "language": "Korean",
+        "voices": [
+            "Korean Female",
+            "Korean Male"
+        ]
+    },
+    {
+        "code": "ZH",
+        "language": "Chinese (Mandarin)",
+        "voices": [
+            "Chinese Female",
+            "Chinese Male",
+            "Chinese (Hong Kong) Female",
+            "Chinese (Hong Kong) Male",
+            "Chinese Taiwan Female",
+            "Chinese Taiwan Male"
+        ]
+    },
+    {
+        "code": "RU",
+        "language": "Russian",
+        "voices": [
+            "Russian Female",
+            "Russian Male"
+        ]
+    },
+    {
+        "code": "AR",
+        "language": "Arabic",
+        "voices": [
+            "Arabic Male",
+            "Arabic Female"
+        ]
+    },
+    {
+        "code": "NL",
+        "language": "Dutch",
+        "voices": [
+            "Dutch Female",
+            "Dutch Male"
+        ]
+    },
+    {
+        "code": "SV",
+        "language": "Swedish",
+        "voices": [
+            "Swedish Female",
+            "Swedish Male"
+        ]
+    },
+    {
+        "code": "GA",
+        "language": "Irish (Gaelic)",
+        "voices": []
+    },
+    {
+        "code": "TR",
+        "language": "Turkish",
+        "voices": [
+            "Turkish Female",
+            "Turkish Male"
+        ]
+    },
+    {
+        "code": "NO",
+        "language": "Norwegian (Bokmål)",
+        "voices": [
+            "Norwegian Female",
+            "Norwegian Male"
+        ]
+    },
+    {
+        "code": "DA",
+        "language": "Danish",
+        "voices": [
+            "Danish Female",
+            "Danish Male"
+        ]
+    },
+    {
+        "code": "PL",
+        "language": "Polish",
+        "voices": [
+            "Polish Female",
+            "Polish Male"
+        ]
+    },
+    {
+        "code": "HI",
+        "language": "Hindi",
+        "voices": [
+            "Hindi Female",
+            "Hindi Male",
+            "Tamil Female",
+            "Tamil Male"
+        ]
+    },
+    {
+        "code": "EL",
+        "language": "Greek",
+        "voices": [
+            "Greek Female",
+            "Greek Male"
+        ]
+    },
+    {
+        "code": "CS",
+        "language": "Czech",
+        "voices": [
+            "Czech Female",
+            "Czech Male"
+        ]
+    },
+    {
+        "code": "HE",
+        "language": "Hebrew",
+        "voices": []
+    },
+    {
+        "code": "VI",
+        "language": "Vietnamese",
+        "voices": [
+            "Vietnamese Female",
+            "Vietnamese Male"
+        ]
+    },
+    {
+        "code": "CY",
+        "language": "Welsh",
+        "voices": [
+            "Welsh Male"
+        ]
+    },
+    {
+        "code": "UA",
+        "language": "Ukrainian",
+        "voices": [
+            "Ukrainian Female"
+        ]
+    },
+    {
+        "code": "HU",
+        "language": "Hungarian",
+        "voices": [
+            "Hungarian Female",
+            "Hungarian Male"
+        ]
+    },
+    {
+        "code": "RO",
+        "language": "Romanian",
+        "voices": [
+            "Romanian Female"
+        ]
+    },
+    {
+        "code": "SW",
+        "language": "Swahili",
+        "voices": [
+            "Swahili Male"
+        ]
+    },
+    {
+        "code": "ID",
+        "language": "Indonesian",
+        "voices": [
+            "Indonesian Female",
+            "Indonesian Male"
+        ]
+    },
+    {
+        "code": "FI",
+        "language": "Finnish",
+        "voices": [
+            "Finnish Female",
+            "Finnish Male"
+        ]
+    },
+    {
+        "code": "NV",
+        "language": "Navajo",
+        "voices": []
+    },
+    {
+        "code": "YI",
+        "language": "Yiddish",
+        "voices": []
+    },
+    {
+        "code": "GD",
+        "language": "Scottish Gaelic",
+        "voices": []
+    },
+    {
+        "code": "EO",
+        "language": "Esperanto",
+        "voices": [
+            "Esperanto Male"
+        ]
+    },
+    {
+        "code": "TLH",
+        "language": "Klingon",
+        "voices": []
+    },
+    {
+        "code": "HV",
+        "language": "High Valyrian",
+        "voices": []
+    },
+    {
+        "code": "HT",
+        "language": "Haitian Creole",
+        "voices": []
+    },
+    {
+        "code": "ZU",
+        "language": "Zulu",
+        "voices": []
+    }
+];
 
 export function getDuolingoCourseLanguage(lang_id) {
     const course = duolingoCourses.find(course => course.code === lang_id);

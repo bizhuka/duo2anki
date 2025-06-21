@@ -1,6 +1,8 @@
 import { util } from './lib/util.js'
 import { getDuolingoVocabulary } from './lib/duolingo_loader.js';
 import './lib/sidepanel_handler.js'; // Handles side panel connection and toggling
+import './lib/context_menu_handler.js';
+import { RANDOM_GAME_NOTIFICATION_ID } from './lib/notification_handler.js';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message.background)
@@ -66,6 +68,21 @@ class MessageHandler {
             item.course_id = this.course_id;
             item.targetLang = this.targetLang;
             item.sourceLang = this.sourceLang;
+        }
+    }
+
+    async setupGameAlarm() {
+        const interval = util.options.gameNotificationInterval;
+
+        chrome.alarms.clear('randomGameAlarm');
+
+        if (interval > 0) {
+            chrome.alarms.create('randomGameAlarm', {
+                delayInMinutes: 1, // For testing, show first notification after 1 minute
+                periodInMinutes: interval
+            });
+        } else {
+            chrome.notifications.clear(RANDOM_GAME_NOTIFICATION_ID);
         }
     }
 }

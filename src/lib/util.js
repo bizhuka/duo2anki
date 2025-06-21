@@ -1,24 +1,28 @@
-import { get_translated_text, getDuolingoCourseLanguage } from "./i18n/translation.js";
+import { get_translated_text, getDuolingoCourseLanguage, duolingoCourses } from "./i18n/translation.js";
+import { reactive } from "vue";
 
 export const util = {
-  options: {
+  options: reactive({
     lightTheme: true,
     current_course_id: null,
     pluginLanguage: "EN",
 
     // Context
-    useGrok: false,
+    ai_model: 'chatgpt',
     prompt_prefix: "",
     request_count: 1,
+    words_per_request: 10,
     add_2_back: true,
 
     // Image Search
     imageSearchTabId: null, // Store the ID of the image search tab
-    soundMode: 0,
 
     // Anki export options
     exportWithContextOnly: true,
-  },
+
+    // Game Notification
+    gameNotificationInterval: 0, // in minutes. 0 means 'off'.
+  }),
 
   CONFIRM_RESULT: {
     YES: "yes",
@@ -29,11 +33,16 @@ export const util = {
   WORD_IS_NEW: 9007199254740777,
 
   SOUND_MODE: {
-    FRONT_WORD: 0,
-    FRONT_WORD_WITH_CONTEXT: 1,
-    OFF: 2,
+    OFF: 10,
+    FRONT_WORD: 20,
+    CONTEXT_ONLY: 30,
+    FRONT_WORD_WITH_CONTEXT: 40,
+  },
 
-    CONTEXT_ONLY: 99,
+  AI_MODEL: {
+    CHATGPT: 'chatgpt',
+    GROK: 'grok',
+    GPT4MINI: 'gpt-4.1-mini',
   },
 
   getCurrentCourse() {
@@ -53,8 +62,7 @@ export const util = {
   },
 
   get_sound_url: function (item) {
-    const firstPart = this.delete_all_tags(item.context?.split("→")[0]);
-    const wholeText = item.front + (firstPart ? `. ` + firstPart : "");
+    const wholeText = this.get_speak_text(item);
     if (!wholeText) return null;
 
     return wholeText && item.targetLang
@@ -64,13 +72,15 @@ export const util = {
       : null;
   },
 
-  playSound: function (item, play = true, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
-    if (this.currentAudio)
-      try {
-        this.currentAudio.pause();
-      } finally {
-        this.currentAudio = null;
-      }
+  get_speak_text: function (item) {
+    const firstPart = this.delete_all_tags(item.context?.split("→")[0]);
+    return item.front + (firstPart ? `. ` + firstPart : "");
+  },
+
+  playSound: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
+    if (window.responsiveVoice) {
+      window.responsiveVoice.cancel();
+    }
 
     let word = {};
     switch (mode) {
@@ -87,13 +97,13 @@ export const util = {
           return null;
     }
 
-    const soundUrl = this.get_sound_url(word);
-    if (soundUrl) {
-      this.currentAudio = new Audio(soundUrl);
-      if(play)
-        this.currentAudio.play();
+    if (word && window.responsiveVoice) {
+        const textToSpeak = this.get_speak_text(word);
+        const lang_id = this.get_course_info(this.options.current_course_id).lang_id;
+        const course = duolingoCourses.find(c => c.code === lang_id);
+        const voice = course?.voices?.[0] || 'US English Female';
+        window.responsiveVoice.speak(textToSpeak, voice);
     }
-    return this.currentAudio;
   },
 
   get_course_info: function (course_id) {

@@ -4,7 +4,8 @@
       <div class="card-front-content">
         <div class="text-h4 mb-2">{{ cardData.front }}</div>
         <div class="text-subtitle-1 text-medium-emphasis mb-4" v-if="cardData.transcription" v-html="cardData.transcription"></div>
-        <ReplaySoundButton :card="cardData" />
+        <ReplaySoundButton :card="cardData"
+                           :modes="[ util.SOUND_MODE.OFF, util.SOUND_MODE.FRONT_WORD, util.SOUND_MODE.CONTEXT_ONLY ]" />
       </div>
     </v-card-text>
 
@@ -25,6 +26,10 @@
     </div>
   </v-card>
 </template>
+
+<script setup>
+  import { util } from '@/lib/util';
+</script>
 
 <script>
 import anime from 'animejs/lib/anime.es.js';

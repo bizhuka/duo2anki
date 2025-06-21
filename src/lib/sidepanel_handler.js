@@ -2,6 +2,10 @@ import { util } from './util.js'; // Import util for open_side_panel
 
 let sidePanelPort = null; // Holds the connection port to the side panel if open
 
+export function isSidePanelOpen() {
+    return !!sidePanelPort;
+}
+
 // Listener for connections (e.g., from the side panel)
 chrome.runtime.onConnect.addListener((port) => {
     if (port.name === 'sidepanel') {

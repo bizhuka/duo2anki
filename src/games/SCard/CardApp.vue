@@ -5,8 +5,8 @@
         <v-progress-circular indeterminate color="primary"></v-progress-circular>
       </div>
       <div v-else-if="gameFinished" class="game-finished-message">
-        <p class="text-h6">Review session finished!</p>
-        <v-btn @click="restartGame" color="primary" class="mt-4">Restart Session</v-btn>
+        <p class="text-h6">{{ util.getText('reviewSessionFinished') }}</p>
+        <v-btn @click="restartGame" color="primary" class="mt-4">{{ util.getText('restartSession') }}</v-btn>
       </div>
       <div v-else-if="cardDisplayData" class="game-area">
         <Flashcard
@@ -22,7 +22,7 @@
             block
             size="x-large"
             color="success"
-            title="Show Answer"
+            :title="util.getText('showAnswer')"
           >
             <v-icon>mdi-help</v-icon>
           </v-btn>
@@ -36,18 +36,21 @@
         </div>
       </div>
       <div v-else class="no-cards-message">
-        <p class="text-body-1">No cards available for review, or an error occurred.</p>
-        <v-btn @click="restartGame" color="primary" class="mt-4">Try Again</v-btn>
+        <p class="text-body-1">{{ util.getText('noCardsForReview') }}</p>
+        <v-btn @click="restartGame" color="primary" class="mt-4">{{ util.getText('tryAgain') }}</v-btn>
       </div>
     </v-sheet>
   </div>
 </template>
 
+<script setup>
+  import { util } from '@/lib/util.js';
+</script>
+
 <script>
 import Flashcard from './components/Flashcard.vue';
 import ReviewControls from '../components/ReviewControls.vue';
 import { DbProxy } from '../../lib/database.js';
-import { util } from '../../lib/util.js';
 import anime from 'animejs/lib/anime.es.js';
 
 export default {
@@ -110,7 +113,7 @@ export default {
       if (this.$refs.flashcardComponent && this.$refs.flashcardComponent.$el) {
         anime.set(this.$refs.flashcardComponent.$el, { translateX: 0, opacity: 1 });
       }
-      util.playSound(this.currentCard, false);
+      // TODO util.playSound(this.currentCard, false);
     },
     handleShowAnswerClick() {
       this.showAnswer = true;

@@ -1,11 +1,13 @@
 import { util } from './util.js';
+import { process_with_gpt4mini } from './ai_processors/gpt4mini.js';
 
 
-async function _get_AI_results(firstId, lastId, expectedLength, useGrok, wordIsNew) {
+async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew) {
     // Use a Promise to handle the asynchronous waiting
     return new Promise((resolve, reject) => {
-        const mainElementSelector = useGrok ? 'body' : '#main'; // Assuming #main is the container
-        const paragraphSelector = useGrok ? 'p[class="break-words"]' : 'p[data-start][data-end]';
+        const isGrok = ai_model === 'grok'; //util.AI_MODEL.GROK;
+        const mainElementSelector = isGrok ? 'body' : '#main'; // Assuming #main is the container
+        const paragraphSelector = isGrok ? 'p[class="break-words"]' : 'p[data-start][data-end]';
         const timeoutDuration = 120 * 1000; // in seconds timeout
 
         const checkParagraphs = () => {
@@ -65,21 +67,19 @@ async function _get_AI_results(firstId, lastId, expectedLength, useGrok, wordIsN
     });
 }
 
-function _update_context(finalResult, wordsToProcess, add_2_back) {
-    for (const [index, word] of wordsToProcess.entries()) {
-        const result = finalResult[index] // TODO serach in finalResult insetad?
-        if (word.id === Number(result[0]) || word.id === util.WORD_IS_NEW) {
-            word.context = `${result[3]} → ${result[4]}`
-
+function _update_context(results, wordsToProcess, add_2_back) {
+    for (const result of results) {
+        const word = wordsToProcess.find(w => w.id.toString() === result.id.toString() || (w.id === util.WORD_IS_NEW && w.front === result.front));
+        if (word) {
+            word.context = result.context;
             if (add_2_back && word.back) {
-                word.back += ` → ${result[2]}`
+                word.back += ` → ${result.back}`;
             } else {
-                word.back = result[2]
+                word.back = result.back;
             }
-
         }
     }
-    return wordsToProcess
+    return wordsToProcess;
 }
 
 async function _check_context_results(tabId, wordsToProcess, optionsData) {
@@ -90,14 +90,23 @@ async function _check_context_results(tabId, wordsToProcess, optionsData) {
 
     const results = await chrome.scripting.executeScript({
         target: { tabId },
-        args: [firstId, lastId, expectedLength, optionsData.useGrok, Number(firstId) === util.WORD_IS_NEW],
+        args: [firstId, lastId, expectedLength, optionsData.ai_model, Number(firstId) === util.WORD_IS_NEW],
         func: _get_AI_results,
     });
 
-    const finalResult = results && results.length > 0 && results[0].result ?
-        _update_context(results[0].result, wordsToProcess, optionsData.add_2_back) :
-        null;
-    return finalResult; // Return the processed words (or null)
+    const scrapedResultArrays = results && results.length > 0 && results[0].result;
+    if (!scrapedResultArrays) {
+        return null;
+    }
+
+    const normalizedResults = scrapedResultArrays.map(scrapedArray => ({
+        id: scrapedArray[0],
+        front: scrapedArray[1],
+        back: scrapedArray[2],
+        context: `${scrapedArray[3]} → ${scrapedArray[4]}`
+    }));
+
+    return _update_context(normalizedResults, wordsToProcess, optionsData.add_2_back);
 }
 
 export async function processContexts(inWords, optionsData, actionCallback) {
@@ -105,7 +114,40 @@ export async function processContexts(inWords, optionsData, actionCallback) {
     if (!prompt_prefix || !optionsData.request_count) return; // Basic validation
 
     const filteredWords = inWords; // inWords is already the filtered list
-    const wordsPerRequest = 10;
+    const wordsPerRequest = optionsData.words_per_request;
+
+    if (optionsData.ai_model === util.AI_MODEL.GPT4MINI) {
+        const batchesToProcess = [];
+        for (let i = 0; i < optionsData.request_count; i++) {
+            const startIndex = i * wordsPerRequest;
+            const currentBatch = filteredWords.slice(startIndex, startIndex + wordsPerRequest);
+
+            if (currentBatch.length === 0) break;
+
+            batchesToProcess.push(currentBatch);
+        }
+
+        const isLocal = "poafjilkhgdgdilghljbpdepnimbldam" === chrome.runtime.id
+        try {
+            const promises = batchesToProcess.map(batch => process_with_gpt4mini(batch, optionsData, isLocal));
+            const results = await Promise.all(promises);
+
+            const actionPromises = [];
+            for (const result of results) {
+                if (result && result.length > 0) {
+                    const batchWords = batchesToProcess[results.indexOf(result)];
+                    const processedWords = _update_context(result, batchWords, optionsData.add_2_back);
+                    actionPromises.push(actionCallback(processedWords));
+                }
+            }
+            await Promise.all(actionPromises);
+        } catch (error) {
+            console.error('An error occurred during GPT-4 Mini processing:', error);
+            throw error; // Re-throw the error to be caught by the caller
+        }
+        return;
+    }
+
     const tabCreationPromises = [];
     const batchesToProcess = []; // Store batches corresponding to tab creation promises
 
@@ -128,7 +170,7 @@ export async function processContexts(inWords, optionsData, actionCallback) {
 
         // Construct the URL
         const encodedContext = encodeURIComponent(fullContextText);
-        const url = optionsData.useGrok ?
+        const url = optionsData.ai_model === util.AI_MODEL.GROK ?
             `https://grok.com/?q=${encodedContext}` :
             `https://chat.openai.com/?q=${encodedContext}`;
 
