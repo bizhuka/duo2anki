@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "レビューするカードがないか、エラーが発生しました。",
     "tryAgain": "再試行",
     "timeToPractice": "練習の時間です！",
-    "clickForRandomGame": "スキルを維持するためにランダムなゲームをプレイするには、ここをクリックしてください。"
+    "clickForRandomGame": "スキルを維持するためにランダムなゲームをプレイするには、ここをクリックしてください。",
+    "exportAudioToCollectionMedia": "音声をcollection.mediaにエクスポート",
+    "exportingAudioForWord": "音声 {0}..."
 };

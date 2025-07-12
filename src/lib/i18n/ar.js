@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "لا توجد بطاقات متاحة للمراجعة، أو حدث خطأ.",
     "tryAgain": "حاول مرة أخرى",
     "timeToPractice": "حان وقت التدريب!",
-    "clickForRandomGame": "انقر هنا للحصول على لعبة عشوائية للحفاظ على مهاراتك."
+    "clickForRandomGame": "انقر هنا للحصول على لعبة عشوائية للحفاظ على مهاراتك.",
+    "exportAudioToCollectionMedia": "تصدير الصوت إلى collection.media",
+    "exportingAudioForWord": "صوت {0}..."
 };

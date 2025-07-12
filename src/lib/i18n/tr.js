@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "İnceleme için kart bulunamadı veya bir hata oluştu.",
     "tryAgain": "Tekrar dene",
     "timeToPractice": "Pratik zamanı!",
-    "clickForRandomGame": "Becerilerinizi geliştirmek için rastgele bir oyun için buraya tıklayın."
+    "clickForRandomGame": "Becerilerinizi geliştirmek için rastgele bir oyun için buraya tıklayın.",
+    "exportAudioToCollectionMedia": "Sesi collection.media'ya aktar",
+    "exportingAudioForWord": "Ses {0}..."
 };

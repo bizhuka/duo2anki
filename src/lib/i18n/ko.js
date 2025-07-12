@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "복습할 카드가 없거나 오류가 발생했습니다.",
     "tryAgain": "다시 시도",
     "timeToPractice": "연습할 시간입니다!",
-    "clickForRandomGame": "실력을 유지하기 위해 무작위 게임을 하려면 여기를 클릭하세요."
+    "clickForRandomGame": "실력을 유지하기 위해 무작위 게임을 하려면 여기를 클릭하세요.",
+    "exportAudioToCollectionMedia": "오디오를 collection.media로 내보내기",
+    "exportingAudioForWord": "오디오 {0}..."
 };

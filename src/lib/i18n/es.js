@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "No hay tarjetas disponibles para repasar, o ha ocurrido un error.",
     "tryAgain": "Intentar de nuevo",
     "timeToPractice": "¡Hora de practicar!",
-    "clickForRandomGame": "Haz clic aquí para un juego aleatorio y mantener tus habilidades a punto."
+    "clickForRandomGame": "Haz clic aquí para un juego aleatorio y mantener tus habilidades a punto.",
+    "exportAudioToCollectionMedia": "Exportar audio a collection.media",
+    "exportingAudioForWord": "Audio {0}..."
 };

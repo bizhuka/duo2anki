@@ -355,4 +355,4 @@ class DbProxy extends Dexie {
   }
 }
 
-export { DbProxy };
+export { DbProxy, STATUS };

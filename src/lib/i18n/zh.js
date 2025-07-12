@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "没有可供复习的卡片，或发生错误。",
     "tryAgain": "再试一次",
     "timeToPractice": "练习时间到了！",
-    "clickForRandomGame": "点击此处进行随机游戏，以保持您的技能敏锐。"
+    "clickForRandomGame": "点击此处进行随机游戏，以保持您的技能敏锐。",
+    "exportAudioToCollectionMedia": "将音频导出到 collection.media",
+    "exportingAudioForWord": "正在导出音频 {0}...",
 };

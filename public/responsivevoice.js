@@ -458,7 +458,7 @@ window.addEventListener('load', function() {
         setTimeout(function () {
             if (config.text_welcomeMessage != null && config.text_welcomeMessage != "") {
                 console.log("Launching welcome message");
-                responsiveVoice.speak(GetRandomMsg(config.text_welcomeMessage), 'UK English Female');
+                //responsiveVoice.speak(GetRandomMsg(config.text_welcomeMessage), 'UK English Female');
                 trackEvent('agentFeature', 'welcomeMessage');
             }
         }, 1500);
@@ -477,7 +477,7 @@ window.addEventListener('load', function() {
                 console.log("Welcome Message from Google launched");
 
                 welcomeMessage2Launched = true;
-                responsiveVoice.speak(GetRandomMsg(config.text_welcomeMessage2), 'UK English Female');
+                //responsiveVoice.speak(GetRandomMsg(config.text_welcomeMessage2), 'UK English Female');
                 trackEvent('agentFeature', 'welcomeMessage2');
                 clearInterval(welcomeMessage2Interval);
             }

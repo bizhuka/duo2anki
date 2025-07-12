@@ -19,6 +19,8 @@ export const util = {
 
     // Anki export options
     exportWithContextOnly: true,
+    includeScheduleInformation: true,
+    collection_media: false,
 
     // Game Notification
     gameNotificationInterval: 0, // in minutes. 0 means 'off'.
@@ -66,9 +68,10 @@ export const util = {
     if (!wholeText) return null;
 
     return wholeText && item.targetLang
-      ? `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${
-          item.targetLang
-        }&q=${encodeURIComponent(wholeText)}`
+      ? // Google
+        //`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${ item.targetLang }&q=${encodeURIComponent(wholeText)}`
+        // ResponsiveVoice  
+        `https://texttospeech.responsivevoice.org/v1/text:synthesize?text=${encodeURIComponent(wholeText)}&lang=${ item.targetLang }&engine=g1&name=&pitch=0.5&rate=0.5&volume=1&key=kvfbSITh&gender=female`
       : null;
   },
 

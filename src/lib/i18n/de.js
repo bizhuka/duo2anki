@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "Keine Karten zur Überprüfung verfügbar, oder es ist ein Fehler aufgetreten.",
     "tryAgain": "Erneut versuchen",
     "timeToPractice": "Zeit zum Üben!",
-    "clickForRandomGame": "Klicken Sie hier für ein zufälliges Spiel, um Ihre Fähigkeiten zu schärfen."
+    "clickForRandomGame": "Klicken Sie hier für ein zufälliges Spiel, um Ihre Fähigkeiten zu schärfen.",
+    "exportAudioToCollectionMedia": "Audio nach collection.media exportieren",
+    "exportingAudioForWord": "Audio {0}..."
 };

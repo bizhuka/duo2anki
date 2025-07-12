@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "Қайталауға арналған карточкалар жоқ немесе қате пайда болды.",
     "tryAgain": "Қайталап көріңіз",
     "timeToPractice": "Жаттығу уақыты!",
-    "clickForRandomGame": "Дағдыларыңызды шыңдау үшін кездейсоқ ойын ойнау үшін осы жерді басыңыз."
+    "clickForRandomGame": "Дағдыларыңызды шыңдау үшін кездейсоқ ойын ойнау үшін осы жерді басыңыз.",
+    "exportAudioToCollectionMedia": "Аудионы collection.media-ға экспорттау",
+    "exportingAudioForWord": "Аудио {0}..."
 };

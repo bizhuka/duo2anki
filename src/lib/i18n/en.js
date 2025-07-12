@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "No cards available for review, or an error occurred.",
     "tryAgain": "Try Again",
     "timeToPractice": "Time to Practice!",
-    "clickForRandomGame": "Click here for a random game to keep your skills sharp."
+    "clickForRandomGame": "Click here for a random game to keep your skills sharp.",
+    "exportAudioToCollectionMedia": "Export audio to collection.media",
+    "exportingAudioForWord": "Audio {0}..."
 };

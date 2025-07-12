@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "Немає карток для повторення, або сталася помилка.",
     "tryAgain": "Спробуйте ще раз",
     "timeToPractice": "Час тренуватися!",
-    "clickForRandomGame": "Натисніть тут, щоб зіграти у випадкову гру та підтримати свої навички."
+    "clickForRandomGame": "Натисніть тут, щоб зіграти у випадкову гру та підтримати свої навички.",
+    "exportAudioToCollectionMedia": "Експортувати аудіо до collection.media",
+    "exportingAudioForWord": "Аудіо {0}..."
 };

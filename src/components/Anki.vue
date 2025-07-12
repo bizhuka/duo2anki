@@ -2,11 +2,11 @@
   <div :data-lang="optionsData.pluginLanguage">
 
     <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem;">
-      <!-- :loading="ankiLoading.export" -->
       <ActionButton icon="mdi-upload"
         :tooltipText="util.getText('Anki')"
         color="success"
-        :disabled="!db_words.length"
+        :disabled="!db_words.length || exportingToAnki"
+        :loading="exportingToAnki"
         @click="triggerExport"/>
     </div>
 
@@ -47,7 +47,6 @@
                     @update:model-value="saveOptions"
                     density="compact"
                     hide-details
-                    readonly="true"
                   ></v-checkbox>
                 </template>
                 <span v-html="util.getText('anki_exportContextTooltip')"></span>
@@ -56,10 +55,22 @@
 
             <v-col cols="12">
                   <v-checkbox
+                    v-bind="props"
+                    v-model="optionsData.includeScheduleInformation"
                     :label="util.getText('includeScheduleInformation')"
+                    @update:model-value="saveOptions"
                     density="compact"
-                    hide-details
-                    readonly="true"/>
+                    hide-details/>
+            </v-col>
+
+            <v-col cols="12">
+                  <v-checkbox
+                    v-bind="props"
+                    v-model="optionsData.collection_media"
+                    :label="util.getText('exportAudioToCollectionMedia')"
+                    @update:model-value="saveOptions"
+                    density="compact"
+                    hide-details/>
             </v-col>
           </v-row>
         </v-container>
@@ -74,7 +85,9 @@
 </script>
 
 <script>
-import { Model, Deck, Note, Package as AnkiPackage } from 'genanki-js';
+import { Model, Deck, Note, Package as AnkiPackage } from '../lib/genanki.js';
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 export default {
   components: { 
@@ -103,7 +116,7 @@ export default {
     return {
       deckName: '',
       nodeType: '',
-      ankiLoading: false,
+      exportingToAnki: false,
     };
   },
   
@@ -148,7 +161,7 @@ export default {
       return words;
     },
 
-    triggerExport() { // Changed to async as it calls async operations like ankiPackage.writeToFile
+    async triggerExport() { // Changed to async as it calls async operations like ankiPackage.writeToFile
       const wordsToExport = this.getValidWordsForExport();
       if (typeof wordsToExport === 'string') {
         this.showMessage(wordsToExport, 'warning');
@@ -163,6 +176,9 @@ export default {
 
       const modelId = this.get_id_from_name(this.nodeType);
       try {
+        if (this.optionsData.collection_media) {
+          this.exportingToAnki = true;
+        }
         const ankiModel = new Model({
           id: modelId,
           name: this.nodeType,
@@ -188,30 +204,68 @@ export default {
         });
 
         const ankiDeck = new Deck(modelId + 1, this.deckName);
-
-        wordsToExport.forEach(item => {
-          const note = new Note(ankiModel, [
-            item.front,
-            item.back,
-            util.get_sound_url(item),
-            item.image,
-            item.context,
-            item.transcription || '',
-          ]);
-          ankiDeck.addNote(note);
-        });
-
         const ankiPackage = new AnkiPackage();
         ankiPackage.addDeck(ankiDeck);
 
         const db = new SQL.Database();
         ankiPackage.setSqlJs(db);
 
-        // genanki-js's writeToFile method handles the download in browser environments
-        ankiPackage.writeToFile(`duo2anki - ${ util.getCurrentCourse() }.apkg`);
+        const mediaZip = new JSZip(); // Initialize a new JSZip instance for media
+
+        for (const item of wordsToExport) { // Use for...of for async iteration
+          const scheduleInfo = this.optionsData.includeScheduleInformation && item.next_review ? {
+              next_review: item.next_review,
+              status: item.status,
+              interval: item.interval,
+              ease_factor: item.ease_factor,
+          } : null;
+
+          const soundUrl = util.get_sound_url(item);
+          let soundField = soundUrl; // Default to URL
+
+          if (soundUrl && this.optionsData.collection_media) {
+            try {
+              const filename = `${item.targetLang}_${item.id}_${ item.front.replace(/[^a-zA-Z0-9-_.]/g, '_') }.mp3`;
+              this.showMessage(util.getText('exportingAudioForWord', [item.front]), 'warning');
+
+              const response = await fetch(`${soundUrl}`); // &_=${new Date().getTime()}
+              if (response.ok) {
+                const blob = await response.blob();
+                mediaZip.file(filename, blob); // Add to separate media zip
+                soundField = filename;
+              }
+            } catch (error) {
+              console.error(`Error fetching sound from ${soundUrl}:`, error);
+            }
+          }
+
+          const note = new Note(ankiModel, [
+            item.front,
+            item.back,
+            soundField,
+            item.image,
+            item.context,
+            item.transcription || '',
+          ], scheduleInfo);
+          ankiDeck.addNote(note);
+        }
+
+        // Now that all notes and media are added, write the file
+        const fileName = `duo2anki - ${ util.getCurrentCourse() }.apkg`;
+        ankiPackage.writeToFile(fileName);
+
+        if (this.optionsData.collection_media) {
+          mediaZip.generateAsync({ type: "blob" }).then(function (content) {
+            saveAs(content, `duo2anki - ${ util.getCurrentCourse() }_collection_media.zip`);
+          });
+        }
+
+        this.showMessage(fileName, 'success');
       } catch (error) {
         console.error('Error exporting to Anki:', error);
         this.showMessage(util.getText('errorExportingToAnki'), 'error');
+      } finally {
+        this.exportingToAnki = false;
       }
     }
 }

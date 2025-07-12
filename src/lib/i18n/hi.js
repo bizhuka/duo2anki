@@ -95,5 +95,7 @@ export default {
     "noCardsForReview": "समीक्षा के लिए कोई कार्ड उपलब्ध नहीं है, या एक त्रुटि हुई।",
     "tryAgain": "पुनः प्रयास करें",
     "timeToPractice": "अभ्यास का समय!",
-    "clickForRandomGame": "अपने कौशल को तेज रखने के लिए एक यादृच्छिक खेल के लिए यहां क्लिक करें।"
+    "clickForRandomGame": "अपने कौशल को तेज रखने के लिए एक यादृच्छिक खेल के लिए यहां क्लिक करें।",
+    "exportAudioToCollectionMedia": "ऑडियो को collection.media में निर्यात करें",
+    "exportingAudioForWord": "ऑडियो {0}..."
 };
