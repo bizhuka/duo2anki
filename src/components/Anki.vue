@@ -237,12 +237,12 @@ export default {
           }
 
           const note = new Note(ankiModel, [
-            `${item.front}[sound:${soundField}]`, // Update front field to include sound,
+            item.front,
             item.back,
             soundField,
             item.image,
             item.context,
-            item.transcription || '',
+            (item.transcription || '') + `[sound:${soundField}]`,
           ], scheduleInfo);
           ankiDeck.addNote(note);
         }
