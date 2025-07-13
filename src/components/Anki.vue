@@ -173,12 +173,10 @@ export default {
         this.showMessage('SQL.js not initialized. Please ensure it is loaded.', 'error');
         return;
       }
+      this.exportingToAnki = true;
 
       const modelId = this.get_id_from_name(this.nodeType);
       try {
-        if (this.optionsData.collection_media) {
-          this.exportingToAnki = true;
-        }
         const ankiModel = new Model({
           id: modelId,
           name: this.nodeType,
@@ -196,7 +194,7 @@ export default {
           tmpls: [
             {
               name: util.getText('mainTemplate'),
-              qfmt: `<div>{{Front}}</div><div class="transcription">{{Transcription}}</div>[sound:{{Sound}}]`,
+              qfmt: `<div>{{Front}}</div><div class="transcription">{{Transcription}}</div>`, //[sound:{{Sound}}]
               afmt: `<div>{{FrontSide}}</div><hr id=answer><div>{{Back}}</div><div><img src="{{Image}}"></div><div class="context">{{Context}}</div>`,
             },
           ],
@@ -209,8 +207,6 @@ export default {
 
         const db = new SQL.Database();
         ankiPackage.setSqlJs(db);
-
-        const mediaZip = new JSZip(); // Initialize a new JSZip instance for media
 
         for (const item of wordsToExport) { // Use for...of for async iteration
           const scheduleInfo = this.optionsData.includeScheduleInformation && item.next_review ? {
@@ -231,7 +227,8 @@ export default {
               const response = await fetch(`${soundUrl}`); // &_=${new Date().getTime()}
               if (response.ok) {
                 const blob = await response.blob();
-                mediaZip.file(filename, blob); // Add to separate media zip
+                ankiPackage.addMediaFile(blob, filename); // Add to main media package
+
                 soundField = filename;
               }
             } catch (error) {
@@ -240,7 +237,7 @@ export default {
           }
 
           const note = new Note(ankiModel, [
-            item.front,
+            `${item.front}[sound:${soundField}]`, // Update front field to include sound,
             item.back,
             soundField,
             item.image,
@@ -253,13 +250,6 @@ export default {
         // Now that all notes and media are added, write the file
         const fileName = `duo2anki - ${ util.getCurrentCourse() }.apkg`;
         ankiPackage.writeToFile(fileName);
-
-        if (this.optionsData.collection_media) {
-          mediaZip.generateAsync({ type: "blob" }).then(function (content) {
-            saveAs(content, `duo2anki - ${ util.getCurrentCourse() }_collection_media.zip`);
-          });
-        }
-
         this.showMessage(fileName, 'success');
       } catch (error) {
         console.error('Error exporting to Anki:', error);
