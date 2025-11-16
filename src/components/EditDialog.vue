@@ -26,7 +26,7 @@
             <template v-slot:append-inner>
               <ReplaySoundButton
                 :card="dialog.editingWord"
-                :modes="[util.SOUND_MODE.OFF, util.SOUND_MODE.FRONT_WORD, util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT]"
+                :modes="frontSoundModes"
                 @sound-mode-changed="methods.setDialogFocus"
               />
             </template>
@@ -81,6 +81,7 @@
 <script>
 import { reactive, ref, watch, nextTick, computed } from 'vue';
 import { util } from '@/lib/util';
+import { ENABLE_DEBUG_LOGGING } from '@/lib/debugConfig.js';
 import ReplaySoundButton from '@/games/components/ReplaySoundButton.vue';
 
 export default {
@@ -188,6 +189,12 @@ export default {
       return true;
     }
 
+    const frontSoundModes = [
+      util.SOUND_MODE.OFF,
+      util.SOUND_MODE.FRONT_WORD,
+      util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT
+    ];
+
     const methods = {
       async edit_popup(currentWord, shift=0) {
         const currentIndex = props.filteredWords.findIndex(word => word.id === currentWord.id);
@@ -247,13 +254,13 @@ export default {
         }
       },
 
-      async playCurrentWordSound(mode = null) {        
+      async playCurrentWordSound(mode = null) {  
+        if(ENABLE_DEBUG_LOGGING)console.log("playCurrentWordSound called with mode:", mode);      
         util.playSound(dialog.editingWord, mode || util.options.soundMode); // Play sound for the word
       },
 
       handleContextPlaySound() {
         methods.playCurrentWordSound(util.SOUND_MODE.CONTEXT_ONLY); // Play sound for context only
-        util.options.soundMode = util.SOUND_MODE.CONTEXT_ONLY;
         methods.setDialogFocus(); // Call the existing focus method
       },
 
@@ -306,6 +313,7 @@ export default {
       dialog,
       saveDialog, // <-- Expose the ref to the template
       methods,
+      frontSoundModes,
     };
   }
 }

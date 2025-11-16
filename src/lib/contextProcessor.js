@@ -1,13 +1,15 @@
 import { util } from './util.js';
 import { process_with_gpt4mini } from './ai_processors/gpt4mini.js';
-
+import { ENABLE_DEBUG_LOGGING } from './debugConfig.js';
 
 async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew) {
     // Use a Promise to handle the asynchronous waiting
     return new Promise((resolve, reject) => {
         const isGrok = ai_model === 'grok'; //util.AI_MODEL.GROK;
+        if (ENABLE_DEBUG_LOGGING) console.log(`_get_AI_results started. isGrok: ${isGrok}, firstId: ${firstId}, lastId: ${lastId}, expectedLength: ${expectedLength}, wordIsNew: ${wordIsNew}`);
         const mainElementSelector = isGrok ? 'body' : '#main'; // Assuming #main is the container
         const paragraphSelector = isGrok ? 'p[class="break-words"]' : 'p[data-start][data-end]';
+        if (ENABLE_DEBUG_LOGGING) console.log(`Using selectors: mainElementSelector: "${mainElementSelector}", paragraphSelector: "${paragraphSelector}"`);
         const timeoutDuration = 120 * 1000; // in seconds timeout
 
         const checkParagraphs = () => {
@@ -18,26 +20,57 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
                 return str.split('→').map(item => item.trim());
             }
 
-            const paragraphs = document.querySelectorAll(paragraphSelector);
-            console.log(`Found ${paragraphs.length} paragraphs.`);
+            const paragraphs_raw = document.querySelectorAll(paragraphSelector);
+            const paragraphs = isGrok ? Array.from(paragraphs_raw).slice(2) : paragraphs_raw;
+            if (ENABLE_DEBUG_LOGGING) console.log(`Found ${paragraphs.length} paragraphs.`);
 
             if (paragraphs.length === expectedLength) {
                 const firstP = paragraphs[0]?.textContent;
                 const lastP_Array = paragraphs[paragraphs.length - 1]?.textContent?.split('→');
-                if ( ( (firstP.startsWith(firstId.toString()) && lastP_Array[0].startsWith(lastId.toString() ) ) 
+                const sanitizedFirstP = firstP?.replace(/^\s+/, '');
+                const sanitizedLastId = lastP_Array?.[0]?.replace(/^\s+/, '');
+                const lastSentence = lastP_Array?.[lastP_Array.length - 1] ?? '';
+                const lastSentenceIncludesDot = lastSentence.indexOf('.') > 0;
+                const lastIdMatches = sanitizedLastId?.startsWith(lastId.toString());
+                if (ENABLE_DEBUG_LOGGING) console.log('Checking condition for expectedLength:', {
+                    firstP: firstP,
+                    lastP_Array: lastP_Array,
+                    firstP_startsWith_firstId: sanitizedFirstP?.startsWith(firstId.toString()),
+                    lastP_Array_0_startsWith_lastId: lastIdMatches,
+                    wordIsNew: wordIsNew,
+                    lastP_Array_length: lastP_Array?.length,
+                    lastP_Array_last_item_includes_dot: lastSentenceIncludesDot,
+                    lastIdMatches: lastIdMatches
+                });
+                if ( ( (sanitizedFirstP?.startsWith(firstId.toString()) && lastIdMatches ) 
                          || wordIsNew ) &&
                     lastP_Array?.length === 5 &&                    
-                    lastP_Array[lastP_Array.length - 1].indexOf('.') > 0) {
+                    (lastSentenceIncludesDot || lastIdMatches)) {
                     // Return data from all '<p>'
+                    if (ENABLE_DEBUG_LOGGING) console.log('Conditions met for expectedLength. Returning data.');
                     return Array.from(paragraphs).map(p => _splitAndTrim(_deleteAttributes(p.innerHTML)));
                 }
             } else if (paragraphs.length === 1 && (paragraphs[0].innerHTML.split('→').length - 1 === expectedLength * (5 - 1))) {
                 const parts = _deleteAttributes(paragraphs[0].innerHTML).split('<br>');
                 const lastP_Array = _splitAndTrim(parts[parts.length - 1]);
-                if (lastP_Array[lastP_Array.length - 1].indexOf('.') > 0) {
+                const sanitizedLastId = lastP_Array?.[0]?.replace(/^\s+/, '');
+                const lastSentence = lastP_Array?.[lastP_Array.length - 1] ?? '';
+                const lastSentenceIncludesDot = lastSentence.indexOf('.') > 0;
+                const lastIdMatches = sanitizedLastId?.startsWith(lastId.toString());
+                if (ENABLE_DEBUG_LOGGING) console.log('Checking condition for single paragraph:', {
+                    'innerHTML': paragraphs[0].innerHTML,
+                    'parts': parts,
+                    'lastP_Array': lastP_Array,
+                    'last_item': lastP_Array[lastP_Array.length - 1],
+                    lastP_Array_last_item_includes_dot: lastSentenceIncludesDot,
+                    lastIdMatches: lastIdMatches
+                });
+                if (lastSentenceIncludesDot || lastIdMatches) {
+                    if (ENABLE_DEBUG_LOGGING) console.log('Conditions met for single paragraph. Returning data.');
                     return parts.map(p => _splitAndTrim(p));
                 }
             }
+            if (ENABLE_DEBUG_LOGGING) console.log('Conditions not met yet.');
             return null; // Indicate conditions not met yet
         };
 
@@ -50,9 +83,11 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
 
         // Create a MutationObserver
         const observer = new MutationObserver((mutationsList, obs) => {
+            if (ENABLE_DEBUG_LOGGING) console.log('MutationObserver triggered.');
             // Check if the conditions are met after any mutation
             const result = checkParagraphs();
             if (result) {
+                if (ENABLE_DEBUG_LOGGING) console.log('Result found, resolving promise.');
                 clearTimeout(timeoutId); // Clear the timeout
                 obs.disconnect(); // Stop observing
                 resolve(result); // Resolve the promise with the results
@@ -62,6 +97,13 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
 
         // Start observing the target node for configured mutations
         const targetNode = document.querySelector(mainElementSelector);
+        if (!targetNode) {
+            console.error(`Target node "${mainElementSelector}" not found.`);
+            clearTimeout(timeoutId);
+            reject(new Error(`Target node "${mainElementSelector}" not found.`));
+            return;
+        }
+        if (ENABLE_DEBUG_LOGGING) console.log('Starting observer.');
         // Observe changes in children and subtree
         observer.observe(targetNode, { childList: true, subtree: true });
     });
@@ -127,9 +169,8 @@ export async function processContexts(inWords, optionsData, actionCallback) {
             batchesToProcess.push(currentBatch);
         }
 
-        const isLocal = "poafjilkhgdgdilghljbpdepnimbldam" === chrome.runtime.id
         try {
-            const promises = batchesToProcess.map(batch => process_with_gpt4mini(batch, optionsData, isLocal));
+            const promises = batchesToProcess.map(batch => process_with_gpt4mini(batch, optionsData));
             const results = await Promise.all(promises);
 
             const actionPromises = [];

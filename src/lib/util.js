@@ -1,5 +1,7 @@
-import { get_translated_text, getDuolingoCourseLanguage, duolingoCourses } from "./i18n/translation.js";
+import { get_translated_text, getDuolingoCourseLanguage } from "./i18n/translation.js";
 import { reactive } from "vue";
+import { buildTtsUrl, normalizeAzureLanguage } from "./ai_api.js";
+import { ENABLE_DEBUG_LOGGING } from "./debugConfig.js";
 
 export const util = {
   options: reactive({
@@ -13,6 +15,7 @@ export const util = {
     request_count: 1,
     words_per_request: 10,
     add_2_back: true,
+    ttsProvider: "Responsive Voice",
 
     // Image Search
     imageSearchTabId: null, // Store the ID of the image search tab
@@ -25,6 +28,8 @@ export const util = {
     // Game Notification
     gameNotificationInterval: 0, // in minutes. 0 means 'off'.
   }),
+
+  audioPlayer: null,
 
   CONFIRM_RESULT: {
     YES: "yes",
@@ -47,6 +52,12 @@ export const util = {
     GPT4MINI: 'gpt-4.1-mini',
   },
 
+  TTS_PROVIDER: {
+    RESPONSIVE_VOICE: 'Responsive Voice',
+    GOOGLE: 'Google',
+    AZURE_MICROSOFT: 'Azure Microsoft',
+  },
+
   getCurrentCourse() {
     const course_id = this.options.current_course_id;
     return course_id ? getDuolingoCourseLanguage(this.get_course_info(course_id).lang_id) : '';
@@ -64,15 +75,27 @@ export const util = {
   },
 
   get_sound_url: function (item) {
-    const wholeText = this.get_speak_text(item);
-    if (!wholeText) return null;
+    if (!item) {
+      return null;
+    }
 
-    return wholeText && item.targetLang
-      ? // Google
-        //`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${ item.targetLang }&q=${encodeURIComponent(wholeText)}`
-        // ResponsiveVoice  
-        `https://texttospeech.responsivevoice.org/v1/text:synthesize?text=${encodeURIComponent(wholeText)}&lang=${ item.targetLang }&engine=g1&name=&pitch=0.5&rate=0.5&volume=1&key=kvfbSITh&gender=female`
-      : null;
+    const wholeText = this.get_speak_text(item);
+    if (!wholeText || !item.targetLang) {
+      return null;
+    }
+
+    switch (this.options.ttsProvider) {
+      case this.TTS_PROVIDER.RESPONSIVE_VOICE:
+        return `https://texttospeech.responsivevoice.org/v1/text:synthesize?text=${encodeURIComponent(wholeText)}&lang=${ item.targetLang }&engine=g3&name=&pitch=0.5&rate=0.5&volume=1&key=StO3dWAU&gender=female`
+      
+      case this.TTS_PROVIDER.GOOGLE:
+        return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${item.targetLang}&q=${encodeURIComponent(wholeText)}`;
+
+      case this.TTS_PROVIDER.AZURE_MICROSOFT:
+        const languageCode = normalizeAzureLanguage(item.targetLang);
+        return buildTtsUrl(languageCode, wholeText);
+    }
+    new Error("Unsupported TTS Provider", this.options.ttsProvider);
   },
 
   get_speak_text: function (item) {
@@ -81,8 +104,11 @@ export const util = {
   },
 
   playSound: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
-    if (window.responsiveVoice) {
-      window.responsiveVoice.cancel();
+    if(ENABLE_DEBUG_LOGGING)console.log("playSound called with mode:", mode);
+    
+    if (this.audioPlayer) {
+      this.audioPlayer.pause();
+      this.audioPlayer.currentTime = 0;
     }
 
     let word = {};
@@ -100,13 +126,30 @@ export const util = {
           return null;
     }
 
-    if (word && window.responsiveVoice) {
-        const textToSpeak = this.get_speak_text(word);
-        const lang_id = this.get_course_info(this.options.current_course_id).lang_id;
-        const course = duolingoCourses.find(c => c.code === lang_id);
-        const voice = course?.voices?.[0] || 'US English Female';
-        window.responsiveVoice.speak(textToSpeak, voice);
+    if (!word) {
+      return null;
     }
+
+    const audioUrl = this.get_sound_url(word);
+    if (!audioUrl) {
+      return null;
+    }
+
+    try {
+      this.audioPlayer = new Audio(audioUrl);
+      if(ENABLE_DEBUG_LOGGING)console.log("!!!!!!!!!!!Playing audio:", word);
+      
+      // Rely on browser audio playback via selected TTS provider
+      this.audioPlayer.play().catch((error) => {
+        console.error('Error playing audio:', error);
+      });
+      return this.audioPlayer;
+    } catch (error) {
+      console.error('Failed to create audio element:', error);
+      this.audioPlayer = null;
+    }
+
+    return null;
   },
 
   get_course_info: function (course_id) {

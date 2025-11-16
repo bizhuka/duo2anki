@@ -1,7 +1,8 @@
 
-export async function process_with_gpt4mini(wordsToProcess, optionsData, isLocal) {
-    const translateUrl = isLocal ? 'http://localhost:3000/translate' : 'https://duo2anki.fly.dev/translate'
-    // const translateUrl = 'https://duo2anki.fly.dev/translate'
+import { getTranslateUrl, isLocalExtension } from "../ai_api.js";
+
+export async function process_with_gpt4mini(wordsToProcess, optionsData) {
+    const translateUrl = getTranslateUrl(isLocalExtension());
 
     async function call_api(prompt) {
         const response = await fetch(translateUrl, {
