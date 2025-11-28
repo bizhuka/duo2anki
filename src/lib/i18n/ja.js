@@ -31,7 +31,7 @@ export default {
     "Enter text...": "テキストを入力...",
     "Drop image here (URL or file)": "ここに画像をドロップ（URLまたはファイル）",
     "Application Hotkeys": "アプリケーションショートカット",
-    "Open/Close Duo2Anki Side Panel": "Duo2Ankiサイドパネルを開く/閉じる",
+    "Open/Close Side Panel": "{0}サイドパネルを開く/閉じる",
     "Edit Word Dialog Hotkeys": "単語編集ダイアログショートカット",
     "Previous Word": "前の単語",
     "Next Word": "次の単語",
@@ -97,5 +97,14 @@ export default {
     "timeToPractice": "練習の時間です！",
     "clickForRandomGame": "スキルを維持するためにランダムなゲームをプレイするには、ここをクリックしてください。",
     "exportAudioToCollectionMedia": "音声をcollection.mediaにエクスポート",
-    "exportingAudioForWord": "音声 {0}..."
+    "exportingAudioForWord": "音声 {0}...",
+    "Archive all": "すべてアーカイブ",
+    "Are you sure you want to archive all words?": "すべての単語をアーカイブしてもよろしいですか？",
+    "All words archived.": "すべての単語がアーカイブされました。",
+    "Are you sure you want to archive?": "\"{0}\" をアーカイブしてもよろしいですか？",
+    "Are you sure you want to restore?": "\"{0}\" を復元してもよろしいですか？",
+    "Word archived": "単語 \"{0}\" はアーカイブされました。",
+    "Word restored": "単語 \"{0}\" は復元されました。",
+    "Archive": "アーカイブ",
+    "Restore": "復元"
 };

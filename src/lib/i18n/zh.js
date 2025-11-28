@@ -31,7 +31,7 @@ export default {
     "Enter text...": "输入文本...",
     "Drop image here (URL or file)": "将图片拖放到此处（URL或文件）",
     "Application Hotkeys": "应用程序快捷键",
-    "Open/Close Duo2Anki Side Panel": "打开/关闭Duo2Anki侧面板",
+    "Open/Close Side Panel": "打开/关闭{0}侧面板",
     "Edit Word Dialog Hotkeys": "编辑单词对话框快捷键",
     "Previous Word": "上一个单词",
     "Next Word": "下一个单词",
@@ -98,4 +98,13 @@ export default {
     "clickForRandomGame": "点击此处进行随机游戏，以保持您的技能敏锐。",
     "exportAudioToCollectionMedia": "将音频导出到 collection.media",
     "exportingAudioForWord": "正在导出音频 {0}...",
+    "Archive all": "全部归档",
+    "Are you sure you want to archive all words?": "您确定要归档所有单词吗？",
+    "All words archived.": "所有单词已归档。",
+    "Are you sure you want to archive?": "您确定要归档 \"{0}\" 吗？",
+    "Are you sure you want to restore?": "您确定要恢复 \"{0}\" 吗？",
+    "Word archived": "单词 \"{0}\" 已归档。",
+    "Word restored": "单词 \"{0}\" 已恢复。",
+    "Archive": "归档",
+    "Restore": "恢复"
 };

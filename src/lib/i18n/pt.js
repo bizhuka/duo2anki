@@ -31,7 +31,7 @@ export default {
     "Enter text...": "Insira texto...",
     "Drop image here (URL or file)": "Solte a imagem aqui (URL ou ficheiro)",
     "Application Hotkeys": "Teclas de atalho da aplicação",
-    "Open/Close Duo2Anki Side Panel": "Abrir/fechar o painel lateral Duo2Anki",
+    "Open/Close Side Panel": "Abrir/fechar o painel lateral {0}",
     "Edit Word Dialog Hotkeys": "Teclas de atalho da janela de edição de palavras",
     "Previous Word": "Palavra anterior",
     "Next Word": "Palavra seguinte",
@@ -97,5 +97,14 @@ export default {
     "timeToPractice": "Hora de praticar!",
     "clickForRandomGame": "Clique aqui para um jogo aleatório para manter suas habilidades afiadas.",
     "exportAudioToCollectionMedia": "Exportar áudio para collection.media",
-    "exportingAudioForWord": "Áudio {0}..."
+    "exportingAudioForWord": "Áudio {0}...",
+    "Archive all": "Arquivar tudo",
+    "Are you sure you want to archive all words?": "Tem certeza de que deseja arquivar todas as palavras?",
+    "All words archived.": "Todas as palavras arquivadas.",
+    "Are you sure you want to archive?": "Tem certeza de que deseja arquivar \"{0}\"?",
+    "Are you sure you want to restore?": "Tem certeza de que deseja restaurar \"{0}\"?",
+    "Word archived": "Palavra \"{0}\" arquivada.",
+    "Word restored": "Palavra \"{0}\" restaurada.",
+    "Archive": "Arquivar",
+    "Restore": "Restaurar"
 };

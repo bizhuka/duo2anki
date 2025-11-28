@@ -34,9 +34,14 @@
 
 <script>
 import { util } from '../../lib/util.js';
-import { ENABLE_DEBUG_LOGGING } from '../../lib/debugConfig.js';
+import { ENABLE_DEBUG_LOGGING } from '../../lib/ai.js';
 
 const playbackCache = new WeakMap();
+const providers = [
+  util.TTS_PROVIDER.RESPONSIVE_VOICE,
+  util.TTS_PROVIDER.GOOGLE,
+  util.TTS_PROVIDER.AZURE_MICROSOFT,
+];
 
 export default {
   name: 'ReplaySoundButton',
@@ -94,20 +99,16 @@ export default {
       return this.soundMode !== util.SOUND_MODE.OFF;
     },
     providerShortLabel() {
-      switch (util.options.ttsProvider) {
-        case util.TTS_PROVIDER.RESPONSIVE_VOICE:
-        case util.TTS_PROVIDER.GOOGLE:
-        case util.TTS_PROVIDER.AZURE_MICROSOFT:
-          return util.options.ttsProvider.charAt(0);          
+      const provider = util.options.ttsProvider;
+      if (providers.includes(provider)) {
+        return provider.charAt(0);
       }
       return '?';
     },
     ttsProviderTooltip() {
-      switch (util.options.ttsProvider) {
-        case util.TTS_PROVIDER.RESPONSIVE_VOICE:
-        case util.TTS_PROVIDER.GOOGLE:
-        case util.TTS_PROVIDER.AZURE_MICROSOFT:
-          return util.options.ttsProvider;         
+      const provider = util.options.ttsProvider;
+      if (providers.includes(provider)) {
+        return provider;
       }
       return '?';
     }
@@ -151,11 +152,6 @@ export default {
     },
 
     async toggleTtsProvider() {
-      const providers = [
-        util.TTS_PROVIDER.RESPONSIVE_VOICE,
-        util.TTS_PROVIDER.GOOGLE,
-        util.TTS_PROVIDER.AZURE_MICROSOFT,
-      ];
       const current = util.options.ttsProvider ?? util.TTS_PROVIDER.RESPONSIVE_VOICE;
       const nextProvider = providers[(providers.indexOf(current) + 1) % providers.length];
       util.options.ttsProvider = nextProvider;

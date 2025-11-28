@@ -1,7 +1,6 @@
 import { get_translated_text, getDuolingoCourseLanguage } from "./i18n/translation.js";
 import { reactive } from "vue";
-import { buildTtsUrl, normalizeAzureLanguage } from "./ai_api.js";
-import { ENABLE_DEBUG_LOGGING } from "./debugConfig.js";
+import { buildTtsUrl, normalizeAzureLanguage, ENABLE_DEBUG_LOGGING } from "./ai.js";
 
 export const util = {
   options: reactive({
@@ -24,6 +23,8 @@ export const util = {
     exportWithContextOnly: true,
     includeScheduleInformation: true,
     collection_media: false,
+    exportWithTranslationsOnly: true,
+    exportWithImagesOnly: false,
 
     // Game Notification
     gameNotificationInterval: 0, // in minutes. 0 means 'off'.
@@ -68,19 +69,54 @@ export const util = {
     return text.replace(/<\/?p>|<br\/?>/g, "").trim();
   },
 
+  unescape_html: function (text) {
+    return text.
+        replace(/&nbsp;|&#160;/gi, ' ')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+  },
+
   delete_all_tags: function (text) {
     if (!text) return "";
     // Or   /<[^>]*>/g  ?
     return text.replace(/<\/?[^>]+(>|$)/g, "").trim();
   },
 
-  get_sound_url: function (item) {
-    if (!item) {
+  get_sound_url: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
+    if (!item || !item.targetLang) {
       return null;
     }
 
-    const wholeText = this.get_speak_text(item);
-    if (!wholeText || !item.targetLang) {
+    if (mode === this.SOUND_MODE.OFF) {
+      return null;
+    }
+
+    const front = (item.front || "").trim();
+    const cleanedContext = item.context
+      ? this.delete_all_tags(item.context.split('→')[0] || "").trim()
+      : "";
+
+    let wholeText = "";
+    switch (mode) {
+      case this.SOUND_MODE.FRONT_WORD:
+        wholeText = front;
+        break;
+      case this.SOUND_MODE.CONTEXT_ONLY:
+        wholeText = cleanedContext;
+        break;
+      case this.SOUND_MODE.FRONT_WORD_WITH_CONTEXT:
+      default:
+        wholeText = front;
+        if (cleanedContext) {
+          wholeText = wholeText ? `${wholeText}. ${cleanedContext}` : cleanedContext;
+        }
+        break;
+    }
+
+    if (!wholeText) {
       return null;
     }
 
@@ -95,12 +131,7 @@ export const util = {
         const languageCode = normalizeAzureLanguage(item.targetLang);
         return buildTtsUrl(languageCode, wholeText);
     }
-    new Error("Unsupported TTS Provider", this.options.ttsProvider);
-  },
-
-  get_speak_text: function (item) {
-    const firstPart = this.delete_all_tags(item.context?.split("→")[0]);
-    return item.front + (firstPart ? `. ` + firstPart : "");
+    return null;
   },
 
   playSound: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
@@ -111,33 +142,14 @@ export const util = {
       this.audioPlayer.currentTime = 0;
     }
 
-    let word = {};
-    switch (mode) {
-        case this.SOUND_MODE.FRONT_WORD:
-          word = { front: item.front, targetLang: item.targetLang };
-          break;
-        case this.SOUND_MODE.FRONT_WORD_WITH_CONTEXT:
-          word = item;
-          break;
-        case this.SOUND_MODE.CONTEXT_ONLY:
-          word = { front: '', context: item.context, targetLang: item.targetLang };
-          break;
-        default: // case this.SOUND_MODE.OFF:
-          return null;
-    }
-
-    if (!word) {
-      return null;
-    }
-
-    const audioUrl = this.get_sound_url(word);
+    const audioUrl = this.get_sound_url(item, mode);
     if (!audioUrl) {
       return null;
     }
 
     try {
       this.audioPlayer = new Audio(audioUrl);
-      if(ENABLE_DEBUG_LOGGING)console.log("!!!!!!!!!!!Playing audio:", word);
+      if(ENABLE_DEBUG_LOGGING)console.log("!!!!!!!!!!!Playing audio:", { item, mode });
       
       // Rely on browser audio playback via selected TTS provider
       this.audioPlayer.play().catch((error) => {

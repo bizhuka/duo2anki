@@ -49,6 +49,10 @@ const props = defineProps({
   hideToolbar: { // New prop to control toolbar visibility
     type: Boolean,
     default: false
+  },
+  breakDelimeter: { // Optional string of delimiters to split into line breaks
+    type: String,
+    default: ''
   }
 });
 
@@ -78,7 +82,6 @@ const editorStyle = computed(() => ({
   '--custom-button1-color': customButton1Color.value // Pass color value directly
 }));
 
-
 // Toolbar options with the new button and handler
 const editorOptions = computed(() => {
   const modules = {
@@ -104,8 +107,43 @@ const editorOptions = computed(() => {
 
 // Function to emit update event
 const handleUpdate = (content) => {
-    const mergedContent = content.replace(/<\/p><p>/g, '')  // Yep delete this way. Not util.delete_all_linebreaks(content)
-    emit('update:modelValue', mergedContent);
+  if (!props.breakDelimeter || !content) {
+    emit('update:modelValue', content.replace(/<\/p><p>/g, '')); // Yep delete this way. Not util.delete_all_linebreaks(content)
+    return;
+  }
+
+  // 1. Get the raw text content, preserving HTML tags.
+  const textContent = content
+    .replace(/<\/p><p>/g, '')    
+    .replace(/\s+/g, ' ').trim();
+
+  // 2. Split the text by delimiters.
+  const parts = textContent.split(new RegExp(`([${props.breakDelimeter}])`));
+
+  // 3. Rebuild the content with each part in a <p> tag.
+  let newContent = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+
+    // if part is a delimiter, append it to the previous <p>
+    if (props.breakDelimeter.includes(part) && newContent.endsWith('</p>')) {
+      newContent = newContent.slice(0, -4) + part + '</p>';
+    } else {
+      newContent += `<p>${part}</p>`;
+    }
+  }
+
+  // 4. Clean up any empty paragraphs.
+  newContent = newContent.replace(/<p><\/p>/g, '').replace(/<p>\s*<\/p>/g, '');   
+
+  // 5. Only emit an update if the content has actually changed.
+  // This is crucial to prevent infinite loops.
+  // A simple length check is a heuristic. A better way is to compare normalized HTML.
+  if (newContent !== content) {
+    // console.log('New content with break delimiters applied:', newContent); debugger
+    emit('update:modelValue', newContent);
+  }
 };
 </script>
 

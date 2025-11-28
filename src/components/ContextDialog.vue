@@ -56,6 +56,8 @@ export default {
             required: true
         }
     },
+    components: {
+    },
     setup(props, { emit }) {
         const dialog = reactive({
             show: false,
@@ -75,11 +77,7 @@ export default {
         });
 
         function fillDefaultPrompt() {
-            props.optionsData.prompt_prefix = _get_default_prompt_prefix()
-        }
-
-        function _get_default_prompt_prefix() {
-            return util.getText('context_defaultPrompt');
+            props.optionsData.prompt_prefix = util.getText('context_defaultPrompt')
         }
 
         // Method to show the dialog

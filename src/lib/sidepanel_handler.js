@@ -40,7 +40,7 @@ function toggleSidePanel() {
 
 // Listener for keyboard shortcuts
 chrome.commands.onCommand.addListener((command) => {
-    if (command === 'duo2anki_side_panel') {
+    if (command === 'app_side_panel') {
         toggleSidePanel();
     }
 });

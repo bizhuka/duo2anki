@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "kindle2anki",
-  "version": "1.0.0",
+  "name": "duo2anki",
+  "version": "1.5",
   "description": "Anki tool",
   "icons": {
     "128": "icon.png"
@@ -29,6 +29,9 @@
     "default_path": "sidepanel.html"
   },
   "host_permissions": [
+    "https://www.duolingo.com/",
+    "https://chatgpt.com/",
+    "https://grok.com/"
   ],
   "permissions": [
     "scripting",
@@ -36,7 +39,10 @@
     "activeTab",
     "storage",
     "sidePanel",
-    "webRequest"
+    "webRequest",
+    "notifications",
+    "alarms",
+    "contextMenus"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"

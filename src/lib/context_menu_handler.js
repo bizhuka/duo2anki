@@ -12,6 +12,10 @@ async function create_or_update_context_menu() {
     await util.read_options();
     const course_id = util.options.current_course_id;
 
+    if(!course_id || course_id === 'kindle') {
+        return;
+    }
+
     let title;
     if (course_id) {
         const course_info = util.get_course_info(course_id);
@@ -61,18 +65,20 @@ function handle_context_menu_click(info, tab) {
     }
 }
 
-// --- Initialization ---
-// Add the click listener when the module is loaded.
-chrome.contextMenus.onClicked.addListener(handle_context_menu_click);
+if(chrome.contextMenus){
+    // --- Initialization ---
+    // Add the click listener when the module is loaded.
+    chrome.contextMenus.onClicked.addListener(handle_context_menu_click);
 
-// --- Initialization ---
-// Create the menu when the extension is installed or updated
-chrome.runtime.onInstalled.addListener(create_or_update_context_menu);
-// Create the menu when the browser starts
-chrome.runtime.onStartup.addListener(create_or_update_context_menu);
-// Update the menu when the course changes
-chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local' && changes.options?.newValue?.current_course_id !== changes.options?.oldValue?.current_course_id) {
-        create_or_update_context_menu();
-    }
-});
+    // --- Initialization ---
+    // Create the menu when the extension is installed or updated
+    chrome.runtime.onInstalled.addListener(create_or_update_context_menu);
+    // Create the menu when the browser starts
+    chrome.runtime.onStartup.addListener(create_or_update_context_menu);
+    // Update the menu when the course changes
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace === 'local' && changes.options?.newValue?.current_course_id !== changes.options?.oldValue?.current_course_id) {
+            create_or_update_context_menu();
+        }
+    });
+}

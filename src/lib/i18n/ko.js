@@ -31,7 +31,7 @@ export default {
     "Enter text...": "텍스트 입력...",
     "Drop image here (URL or file)": "여기에 이미지를 드롭하세요 (URL 또는 파일)",
     "Application Hotkeys": "애플리케이션 단축키",
-    "Open/Close Duo2Anki Side Panel": "Duo2Anki 사이드 패널 열기/닫기",
+    "Open/Close Side Panel": "{0} 사이드 패널 열기/닫기",
     "Edit Word Dialog Hotkeys": "단어 편집 대화 상자 단축키",
     "Previous Word": "이전 단어",
     "Next Word": "다음 단어",
@@ -97,5 +97,14 @@ export default {
     "timeToPractice": "연습할 시간입니다!",
     "clickForRandomGame": "실력을 유지하기 위해 무작위 게임을 하려면 여기를 클릭하세요.",
     "exportAudioToCollectionMedia": "오디오를 collection.media로 내보내기",
-    "exportingAudioForWord": "오디오 {0}..."
+    "exportingAudioForWord": "오디오 {0}...",
+    "Archive all": "모두 보관",
+    "Are you sure you want to archive all words?": "모든 단어를 보관하시겠습니까?",
+    "All words archived.": "모든 단어가 보관되었습니다.",
+    "Are you sure you want to archive?": "\"{0}\"을(를) 보관하시겠습니까?",
+    "Are you sure you want to restore?": "\"{0}\"을(를) 복원하시겠습니까?",
+    "Word archived": "단어 \"{0}\"이(가) 보관되었습니다.",
+    "Word restored": "단어 \"{0}\"이(가) 복원되었습니다.",
+    "Archive": "보관",
+    "Restore": "복원"
 };

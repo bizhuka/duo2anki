@@ -31,7 +31,7 @@ export default {
     "Enter text...": "Введите текст...",
     "Drop image here (URL or file)": "Перетащите изображение сюда (URL или файл)",
     "Application Hotkeys": "Горячие клавиши приложения",
-    "Open/Close Duo2Anki Side Panel": "Открыть/закрыть боковую панель Duo2Anki",
+    "Open/Close Side Panel": "Открыть/закрыть боковую панель {0}",
     "Edit Word Dialog Hotkeys": "Горячие клавиши диалога редактирования слова",
     "Previous Word": "Предыдущее слово",
     "Next Word": "Следующее слово",
@@ -97,5 +97,14 @@ export default {
     "timeToPractice": "Время практиковаться!",
     "clickForRandomGame": "Нажмите здесь, чтобы сыграть в случайную игру и освежить свои навыки.",
     "exportAudioToCollectionMedia": "Экспортировать аудио в collection.media",
-    "exportingAudioForWord": "Аудио {0}..."
+    "exportingAudioForWord": "Аудио {0}...",
+    "Archive all": "Архивировать все",
+    "Are you sure you want to archive all words?": "Вы уверены, что хотите архивировать все слова?",
+    "All words archived.": "Все слова заархивированы.",
+    "Are you sure you want to archive?": "Вы уверены, что хотите архивировать \"{0}\"?",
+    "Are you sure you want to restore?": "Вы уверены, что хотите восстановить \"{0}\"?",
+    "Word archived": "Слово \"{0}\" заархивировано.",
+    "Word restored": "Слово \"{0}\" восстановлено.",
+    "Archive": "Архивировать",
+    "Restore": "Восстановить"
 };

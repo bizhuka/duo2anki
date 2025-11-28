@@ -63,6 +63,7 @@
 </script>
 
 <script>
+  import { ENABLE_DEBUG_LOGGING } from '../../lib/ai.js';
 import WordList from './components/WordList.vue';
 import ReviewControls from '../components/ReviewControls.vue';
 import ReplaySoundButton from '../components/ReplaySoundButton.vue';
@@ -132,6 +133,7 @@ export default {
       if (this.isCorrectAnswer && this.currentSentence) {
         switch(this.consMode){
           case 'frontGame':
+            if(ENABLE_DEBUG_LOGGING)console.log('finalDisplayWords frontGame', util.delete_all_tags(this.currentSentence.back));
             return util.delete_all_tags(this.currentSentence.back)
           case 'backGame':
             return util.delete_all_tags(this.currentSentence.front)
@@ -149,6 +151,7 @@ export default {
 
       switch(this.consMode){
         case 'frontGame':
+          return this.constructedWords.length === 0
         case 'backGame':
           return this.constructedWords.length !== 1
         default:
@@ -190,7 +193,7 @@ export default {
             element.targetPhrase = frontContext;
             element.sourcePhrase = `${ backContext } (${ element.front })`;
         }
-
+        if(ENABLE_DEBUG_LOGGING)console.log('loadSentences', element);
         return element;
       });
     },
@@ -235,9 +238,17 @@ export default {
     },
 
     compareAnswer(){
+      if(ENABLE_DEBUG_LOGGING)console.log('compareAnswer', this.constructedWords, this.currentSentence.back);
       switch(this.consMode){
         case 'frontGame':
-          return this.constructedWords[0] === util.delete_all_tags(this.currentSentence.back)
+          // 1) normalize whitespace (double spaces, \n, \r, tabs → single space)
+          const cleaned = util.delete_all_tags(this.currentSentence.back).replace(/\s+/g, " ").trim();
+
+          // 2) split by "⏎", "," or "/" or "→"
+          const parts = cleaned.split(/[⏎,→;]/).map(s => s.trim()).filter(Boolean);
+
+          const part = this.constructedWords.join(' ');
+          return parts.includes(part);
         case 'backGame':
           return this.constructedWords[0] === util.delete_all_tags(this.currentSentence.front)
       }

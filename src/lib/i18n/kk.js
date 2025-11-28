@@ -31,7 +31,7 @@ export default {
     "Enter text...": "Мәтін енгізіңіз...",
     "Drop image here (URL or file)": "Суретті осында тастаңыз (URL немесе файл)",
     "Application Hotkeys": "Қолданба пернелері",
-    "Open/Close Duo2Anki Side Panel": "Duo2Anki бүйір панелін ашу/жабу",
+    "Open/Close Side Panel": "{0} бүйір панелін ашу/жабу",
     "Edit Word Dialog Hotkeys": "Сөзді өңдеу диалогы пернелері",
     "Previous Word": "Алдыңғы сөз",
     "Next Word": "Келесі сөз",
@@ -97,5 +97,14 @@ export default {
     "timeToPractice": "Жаттығу уақыты!",
     "clickForRandomGame": "Дағдыларыңызды шыңдау үшін кездейсоқ ойын ойнау үшін осы жерді басыңыз.",
     "exportAudioToCollectionMedia": "Аудионы collection.media-ға экспорттау",
-    "exportingAudioForWord": "Аудио {0}..."
+    "exportingAudioForWord": "Аудио {0}...",
+    "Archive all": "Барлығын мұрағаттау",
+    "Are you sure you want to archive all words?": "Барлық сөздерді мұрағаттауға сенімдісіз бе?",
+    "All words archived.": "Барлық сөздер мұрағатталды.",
+    "Are you sure you want to archive?": "\"{0}\" мұрағаттауға сенімдісіз бе?",
+    "Are you sure you want to restore?": "\"{0}\" қалпына келтіруге сенімдісіз бе?",
+    "Word archived": "\"{0}\" сөзі мұрағатталды.",
+    "Word restored": "\"{0}\" сөзі қалпына келтірілді.",
+    "Archive": "Мұрағаттау",
+    "Restore": "Қалпына келтіру"
 };

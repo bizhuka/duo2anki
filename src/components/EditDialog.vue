@@ -23,7 +23,7 @@
           <v-text-field v-model="dialog.editingWord.front" :label="util.getText('Word')" v-if="dialog.showRichText" density="compact"
             hide-details readonly="true" class="mb-2"> <!-- Added margin-bottom -->
             <!-- Play sound with the word ONLY -->
-            <template v-slot:append-inner>
+            <template v-slot:append-inner v-if="!dialog.editingWord.archived">
               <ReplaySoundButton
                 :card="dialog.editingWord"
                 :modes="frontSoundModes"
@@ -31,7 +31,7 @@
               />
             </template>
             <!-- Search for image button -->
-            <template v-slot:append>
+            <template v-slot:append v-if="!dialog.editingWord.archived">
               <v-tooltip location="top" :text="util.getText('Find Image (F4)')" :open-delay="1000">
                 <template v-slot:activator="{ props }">
                   <v-icon v-bind="props" color="primary" @click="methods.findImageFromFront">mdi-image-search</v-icon>
@@ -40,22 +40,24 @@
             </template>
           </v-text-field>
 
-          <RichTextEditor v-if="dialog.showRichText" v-model="dialog.editingWord.transcription" :label="util.getText('hintOrTranscription')"
+          <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.transcription" :label="util.getText('hintOrTranscription')"
             min-height="1.5rem" class="mb-2" :optionsData="optionsData" :hideToolbar="true"/>
 
           <!-- Translation - Find back image-->
-          <RichTextEditor v-if="dialog.showRichText" v-model="dialog.editingWord.back" :label="util.getText('Translation')"
+          <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.back" :label="util.getText('Translation')"
             min-height="2rem" class="mb-2" :handlers="{ customButton1Click: methods.handleFindImageFromBack }"
-            :icons="{ customButton1Icon: '\\F0978', customButton1Color: 'primary' }" :optionsData="optionsData" />
+            :icons="{ customButton1Icon: '\\F0978', customButton1Color: 'primary' }"
+            :break-delimeter="'⏎;→'" :optionsData="optionsData" />
 
           <!-- Context Play sound context-->
-          <RichTextEditor v-if="dialog.showRichText" v-model="dialog.editingWord.context" :label="util.getText('Context')"
+          <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.context" :label="util.getText('Context')"
             min-height="6rem" hide-details class="mb-2"
             :handlers="{ customButton1Click: methods.handleContextPlaySound }"
-            :icons="{ customButton1Icon: '\\F057E', customButton1Color: 'success' }" :optionsData="optionsData" />
+            :icons="{ customButton1Icon: '\\F057E', customButton1Color: 'success' }" :break-delimeter="'⏎'" :optionsData="optionsData" />
 
           <!-- Combined Image Display and Drop Zone -->
           <ImageDropZone
+            v-if="!dialog.editingWord.archived"
             :image="dialog.editingWord.image"
             @update:image="newImage => { dialog.editingWord.image = newImage }"
             @save="methods.saveEdit"
@@ -67,8 +69,11 @@
         <v-spacer></v-spacer>
         <!-- Delete button -->
         <v-btn v-if="dialog.editingWord.id !== util.WORD_IS_NEW"
-          color="error" text @click="methods.deleteWord" density="compact" prepend-icon="mdi-delete"
-          style="text-transform: none;">{{ util.getText('Delete') }}</v-btn>
+          :color="dialog.editingWord.archived ? 'success' : 'error'" text @click="methods.toggleArchive" density="compact" 
+          :prepend-icon="dialog.editingWord.archived ? 'mdi-archive-arrow-up-outline' : 'mdi-archive-arrow-down-outline'"
+          style="text-transform: none;">
+          {{ util.getText(dialog.editingWord.archived ? 'Restore' : 'Archive') }}
+        </v-btn>
         <!-- Save emits the local copy -->
         <v-btn color="success" text @click="methods.saveEdit" density="compact" style="text-transform: none;">{{ util.getText('Save') }}</v-btn>
       </v-card-actions>
@@ -81,7 +86,7 @@
 <script>
 import { reactive, ref, watch, nextTick, computed } from 'vue';
 import { util } from '@/lib/util';
-import { ENABLE_DEBUG_LOGGING } from '@/lib/debugConfig.js';
+import { ENABLE_DEBUG_LOGGING } from '@/lib/ai.js';
 import ReplaySoundButton from '@/games/components/ReplaySoundButton.vue';
 
 export default {
@@ -89,7 +94,7 @@ export default {
   emits: ['save'],
 
   props: {
-    onDeleteWord: {
+    onArchiveWord: {
       type: Function,
       required: true
     },
@@ -159,18 +164,22 @@ export default {
 
         let prevValue = dialog.prevWord[key];
         let currentValue = dialog.editingWord[key];
-        if (key === 'context' || key === 'back') {
-          prevValue = util.delete_all_linebreaks(prevValue);
-          currentValue = util.delete_all_linebreaks(currentValue);
+        if (key === 'context' || key === 'back' || key === 'transcription') {
+          prevValue = util.unescape_html(util.delete_all_linebreaks(prevValue));
+          currentValue = util.unescape_html(util.delete_all_linebreaks(currentValue));
         }
-        // if(prevValue !== currentValue)console.log(`Property ${key} changed from ${prevValue} to ${currentValue}`);
+        if(prevValue !== currentValue){
+           console.log(`Property ${key} changed: `);
+           console.log(prevValue);
+           console.log(currentValue);
+        }
         return prevValue !== currentValue;
       });
 
       if (isChanged) {
         const result = await saveDialog.value.confirm_popup({
           title: dialog.editingWord.front,
-          message: 'edit_unsavedChangesPrompt',
+          message: util.getText('edit_unsavedChangesPrompt'),
           yesText: util.getText('Save'),
           noText: util.getText('Discard'),
           showStop: true
@@ -194,6 +203,32 @@ export default {
       util.SOUND_MODE.FRONT_WORD,
       util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT
     ];
+
+    const findSiblingWord = (startIndex, direction, preferredArchivedState = null) => {
+      const total = props.filteredWords.length;
+      if (total <= 1 || startIndex === -1) return null;
+
+      const normalizedDirection = direction >= 0 ? 1 : -1;
+      let fallback = null;
+
+      for (let step = 1; step < total; step++) {
+        const candidateIndex = (startIndex + normalizedDirection * step + total) % total;
+        const candidate = props.filteredWords[candidateIndex];
+        if (!candidate || candidate.id === dialog.editingWord?.id) {
+          continue;
+        }
+
+        if (preferredArchivedState === null || candidate.archived === preferredArchivedState) {
+          return candidate;
+        }
+
+        if (!fallback) {
+          fallback = candidate;
+        }
+      }
+
+      return fallback;
+    };
 
     const methods = {
       async edit_popup(currentWord, shift=0) {
@@ -280,9 +315,38 @@ export default {
         }
       },
 
+      async toggleArchive() {
+        if (!dialog.editingWord) return;
+
+        const isArchiving = !dialog.editingWord.archived;
+        const currentIndex = props.filteredWords.findIndex(word => word.id === dialog.editingWord.id);
+        const preferredDirection = isArchiving ? 1 : -1;
+        const preferredState = isArchiving ? false : true;
+
+        const candidates = [
+          findSiblingWord(currentIndex, preferredDirection, preferredState),
+          findSiblingWord(currentIndex, -preferredDirection, preferredState),
+          findSiblingWord(currentIndex, preferredDirection, null),
+          findSiblingWord(currentIndex, -preferredDirection, null)
+        ];
+
+        const nextWord = candidates.find(Boolean) || null;
+
+        const result = await props.onArchiveWord(dialog.editingWord, isArchiving);
+        if (result === util.CONFIRM_RESULT.YES) {
+          dialog.editingWord.archived = isArchiving;
+          methods.saveEdit();
+
+          if (nextWord) {
+            await nextTick();
+            methods.edit_popup(nextWord, 0);
+          }
+        }
+      },
+
       async deleteWord() { // Make the function async
         if (dialog.editingWord) {
-          const deleted = await props.onDeleteWord(dialog.editingWord);
+          const deleted = await props.onArchiveWord(dialog.editingWord);
 
           // Close the dialog only if the deletion was confirmed and successful
           if (deleted === util.CONFIRM_RESULT.YES) {
@@ -301,9 +365,8 @@ export default {
 
       // Find image based on the 'back' (Translation) field
       async handleFindImageFromBack() {
-        const arr0 = util.delete_all_tags(dialog?.editingWord?.back).split('→');
-        const arr1 = arr0[arr0.length - 1].split(',');
-        await util.openImageSearchTab(arr1[0].trim());
+        const parts = util.delete_all_tags(dialog?.editingWord?.back).split(/[⏎,→;]/).map(s => s.trim()).filter(Boolean);
+        await util.openImageSearchTab(parts[0].trim());
         await methods.setDialogFocus(); // Set focus back to the dialog
       },
     };

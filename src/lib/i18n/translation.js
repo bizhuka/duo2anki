@@ -319,7 +319,11 @@ export const pluginsTranslations = {
     ZH: { flag: '/images/flags/cn.png', native: '中文', translations: zhTranslations }, // China
 };
 export function get_translated_text(text, language, args = []){
-  const translation = pluginsTranslations[language]?.translations?.[text] || '!!! ' + text; // Access nested translations object
+  let translation = pluginsTranslations[language]?.translations?.[text] // Access nested translations object
+  if(!translation){
+    console.error('Missing translation for text:', text);
+    translation = '!!! ' + text; 
+  } 
 
   // Replace placeholders with arguments if provided
   if (args && args.length > 0) {

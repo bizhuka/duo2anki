@@ -2,11 +2,13 @@
   <div :data-lang="optionsData.pluginLanguage">
        <v-card flat class="pagination-card mb-2">
         <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem;">
-          <ActionButton :icon="hasDuolingoPage ? 'mdi-download' : 'mdi-open-in-new'"
+          <ActionButton v-if="appName === 'duo2anki'" :icon="hasDuolingoPage ? 'mdi-download' : 'mdi-open-in-new'"
             :tooltipText="hasDuolingoPage ? util.getText('Load Words') : util.getText('Open Words Page')" color="primary"
             :loading="loadingButton" :dataLang="optionsData.pluginLanguage" @click="loadWords" />
-          <ActionButton icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
+          <ActionButton v-if="appName === 'duo2anki'" icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
             :loading="loadingTable" :dataLang="optionsData.pluginLanguage" @click="openContextDialog" />
+          <ActionButton icon="mdi-archive-arrow-down-outline" :tooltipText="util.getText('Archive all')" color="error"
+            :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="archiveAllWords" />
           <ActionButton icon="mdi-delete" :tooltipText="util.getText('Delete all')" color="error"
             :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="clearHistory" />
         </div>
@@ -14,7 +16,7 @@
       <v-text-field autofocus density="compact" v-model="search" clearable hide-details
           :label="util.getText('Search')">
         <template v-slot:append-inner v-if="search && !db_words.some(word => word.front.toLowerCase() === search.trim().toLowerCase())">
-          <v-tooltip location="top">
+          <v-tooltip location="top" v-if="appName === 'duo2anki'">
             <template v-slot:activator="{ props }">
               <v-icon v-bind="props" @click="handleAddWord" color="success">mdi-plus</v-icon>
             </template>
@@ -33,26 +35,30 @@
         { title: util.getText('Context'), key: 'context', sortable: false },
         { title: util.getText('Actions'), key: 'actions', sortable: false }]" :items="filteredWords"
         :loading="loadingTable" :page="page" :items-per-page="itemsPerPage" @update:page="page = $event"
-        @update:items-per-page="itemsPerPage = $event">
+        @update:items-per-page="itemsPerPage = $event"
+        :row-props="({ item }) => ({ class: item.archived ? 'archived-row' : '' })">
 
         <template v-slot:item.back="{ item }">
-          <div v-html="item.back"></div>
+          <div v-if="!item.archived" v-html="item.back"></div>
         </template>
 
         <template v-slot:item.context="{ item }">
-          <div v-html="item.context"></div>
+          <div v-if="!item.archived" v-html="item.context"></div>
         </template>
 
         <template v-slot:item.actions="{ item }">
-          <v-btn icon variant="text" color="primary" size="small" density="compact" @click="playSound(item)">
+          <v-btn v-if="!item.archived" icon variant="text" color="primary" size="small" density="compact" @click="playSound(item)">
             <v-icon>mdi-volume-high</v-icon>
           </v-btn>
 
-          <v-btn icon variant="text" color="error" size="small" density="compact" @click="deleteWord(item)">
-            <v-icon>mdi-delete</v-icon>
+          <v-btn v-if="!item.archived" icon variant="text" color="error" size="small" density="compact" @click="archiveWord(item, true)">
+            <v-icon>mdi-archive-arrow-down-outline</v-icon>
+          </v-btn>
+          <v-btn v-else icon variant="text" color="success" size="small" density="compact" @click="archiveWord(item, false)">
+            <v-icon>mdi-archive-arrow-up-outline</v-icon>
           </v-btn>
 
-          <v-tooltip location="top">
+          <v-tooltip v-if="!item.archived" location="top">
             <template v-slot:activator="{ props }">
               <v-btn v-if="item.image" v-bind="props" icon variant="text" color="info" size="small" density="compact">
                 <v-icon>mdi-image</v-icon>
@@ -74,7 +80,7 @@
     </div>
 
     <!-- Moved Dialogs -->
-    <EditDialog ref="editDialog" @save="handleSaveWord" :onDeleteWord="deleteWord" :filteredWords="filteredWords"
+    <EditDialog ref="editDialog" @save="handleSaveWord" :onArchiveWord="archiveWord" :filteredWords="filteredWords"
       :optionsData="optionsData" />
     <ConfirmDialog ref="confirmDialog" :optionsData="optionsData" />
     <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"/>
@@ -108,6 +114,10 @@ export default {
     showMessage: { // Pass showMessage function
       type: Function,
       required: true,
+    },
+    appName: {
+      type: String,
+      default: ''
     }
   },
   emits: [
@@ -192,9 +202,22 @@ export default {
     },
 
     // --- Database Interaction ---
+    async archiveAllWords() {
+      this.$refs.confirmDialog.confirm_popup({
+        message: util.getText('Are you sure you want to archive all words?'),
+        action: async () => {
+          this.loadingTable = true;
+          await this.dbProxy.archiveAllWords(this.optionsData.current_course_id);
+          this.$emit('refresh-words'); // Ask parent to reload
+          this.showMessage(util.getText('All words archived.'), 'success');
+          this.loadingTable = false;
+        }
+      });
+    },
+
     async clearHistory() {
       this.$refs.confirmDialog.confirm_popup({
-        message: 'Are you sure you want to delete all words?',
+        message: util.getText('Are you sure you want to delete all words?'),
         action: async () => {
           this.loadingTable = true;
           await this.dbProxy.clearWords();
@@ -205,16 +228,16 @@ export default {
       });
     },
 
-    async deleteWord(word) {
+    async archiveWord(word, isArchived = true) {
       const confirmed = this.$refs.confirmDialog.confirm_popup({
         title: word.front,
-        message: null, // 'Are you sure you want to delete "{0}"?',
+        message: util.getText(`Are you sure you want to ${isArchived ? 'archive' : 'restore'}?`, [word.front]),
         action: async () => {
           this.loadingTable = true;
-          await this.dbProxy.deleteWord(word);
+          await this.dbProxy.archiveWord(word, isArchived);
 
           this.$emit('refresh-words'); // Ask parent to reload
-          this.showMessage(util.getText('Word "{0}" deleted.', [word.front]), 'success');
+          this.showMessage(util.getText(`Word ${isArchived ? 'archived' : 'restored'}`, [word.front]), 'success');
           this.loadingTable = false;
         }
       });
@@ -309,6 +332,14 @@ export default {
 </script>
 
 <style scoped>
+:deep(.archived-row) {
+  background-color: #f5f5f5; /* Light grey background */
+  color: #9e9e9e; /* Grey text */
+}
+:deep(.archived-row:hover) {
+  background-color: #eeeeee !important; /* Slightly darker grey on hover */
+}
+
 .data-table-container {
   position: relative;
   height: calc(100vh - 13.5rem); /* Adjust height calculation as needed */

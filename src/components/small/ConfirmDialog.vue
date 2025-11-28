@@ -52,7 +52,7 @@ export default {
         function confirm_popup(options) {
             return new Promise((resolve) => {
                 dialog.title = options.title || util.getText('Confirmation');
-                dialog.message = options.message && util.getText(options.message);
+                dialog.message = options.message;
                 dialog.noText = options.noText || util.getText('No');
                 dialog.yesText = options.yesText || util.getText('Yes');
                 dialog.showStop = options.showStop || false; // Show stop button

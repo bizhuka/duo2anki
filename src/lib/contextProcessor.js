@@ -1,6 +1,5 @@
 import { util } from './util.js';
-import { process_with_gpt4mini } from './ai_processors/gpt4mini.js';
-import { ENABLE_DEBUG_LOGGING } from './debugConfig.js';
+import { process_with_gpt4mini, ENABLE_DEBUG_LOGGING } from './ai.js';
 
 async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew) {
     // Use a Promise to handle the asynchronous waiting
@@ -152,7 +151,7 @@ async function _check_context_results(tabId, wordsToProcess, optionsData) {
 }
 
 export async function processContexts(inWords, optionsData, actionCallback) {
-    const prompt_prefix = optionsData.prompt_prefix.trim();
+    const prompt_prefix = optionsData.prompt_prefix.trim() || util.getText('context_defaultPrompt');
     if (!prompt_prefix || !optionsData.request_count) return; // Basic validation
 
     const filteredWords = inWords; // inWords is already the filtered list

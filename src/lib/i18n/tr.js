@@ -31,7 +31,7 @@ export default {
     "Enter text...": "Metin girin...",
     "Drop image here (URL or file)": "Buraya görüntüyü bırakın (URL veya dosya)",
     "Application Hotkeys": "Uygulama kısayol tuşları",
-    "Open/Close Duo2Anki Side Panel": "Duo2Anki yan panelini aç/kapat",
+    "Open/Close Side Panel": "{0} yan panelini aç/kapat",
     "Edit Word Dialog Hotkeys": "Kelime düzenleme diyalog kısayol tuşları",
     "Previous Word": "Önceki kelime",
     "Next Word": "Sonraki kelime",
@@ -97,5 +97,14 @@ export default {
     "timeToPractice": "Pratik zamanı!",
     "clickForRandomGame": "Becerilerinizi geliştirmek için rastgele bir oyun için buraya tıklayın.",
     "exportAudioToCollectionMedia": "Sesi collection.media'ya aktar",
-    "exportingAudioForWord": "Ses {0}..."
+    "exportingAudioForWord": "Ses {0}...",
+    "Archive all": "Tümünü arşivle",
+    "Are you sure you want to archive all words?": "Tüm kelimeleri arşivlemek istediğinizden emin misiniz?",
+    "All words archived.": "Tüm kelimeler arşivlendi.",
+    "Are you sure you want to archive?": "\"{0}\" kelimesini arşivlemek istediğinizden emin misiniz?",
+    "Are you sure you want to restore?": "\"{0}\" kelimesini geri yüklemek istediğinizden emin misiniz?",
+    "Word archived": "\"{0}\" kelimesi arşivlendi.",
+    "Word restored": "\"{0}\" kelimesi geri yüklendi.",
+    "Archive": "Arşivle",
+    "Restore": "Geri Yükle"
 };

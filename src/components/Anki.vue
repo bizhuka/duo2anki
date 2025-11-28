@@ -38,7 +38,7 @@
               ></v-text-field>
             </v-col>
             <v-col cols="12">
-              <v-tooltip location="top">
+              <v-tooltip location="top" v-if="appName === 'duo2anki'">
                 <template v-slot:activator="{ props }">
                   <v-checkbox
                     v-bind="props"
@@ -51,26 +51,40 @@
                 </template>
                 <span v-html="util.getText('anki_exportContextTooltip')"></span>
               </v-tooltip>
-            </v-col>
 
-            <v-col cols="12">
-                  <v-checkbox
-                    v-bind="props"
-                    v-model="optionsData.includeScheduleInformation"
-                    :label="util.getText('includeScheduleInformation')"
-                    @update:model-value="saveOptions"
-                    density="compact"
-                    hide-details/>
-            </v-col>
+              <v-checkbox
+                v-if="appName === 'duo2anki'"
+                v-model="optionsData.includeScheduleInformation"
+                :label="util.getText('includeScheduleInformation')"
+                @update:model-value="saveOptions"
+                density="compact"
+                hide-details
+              ></v-checkbox>
 
-            <v-col cols="12">
-                  <v-checkbox
-                    v-bind="props"
-                    v-model="optionsData.collection_media"
-                    :label="util.getText('exportAudioToCollectionMedia')"
-                    @update:model-value="saveOptions"
-                    density="compact"
-                    hide-details/>
+              <template v-if="appName === 'kindle2anki'">
+                <v-checkbox
+                  v-model="optionsData.exportWithTranslationsOnly"
+                  label="Export with translations only"
+                  @update:model-value="saveOptions"
+                  density="compact"
+                  hide-details
+                ></v-checkbox>
+                <v-checkbox
+                  v-model="optionsData.exportWithImagesOnly"
+                  label="Export with images only"
+                  @update:model-value="saveOptions"
+                  density="compact"
+                  hide-details
+                ></v-checkbox>
+              </template>
+
+              <v-checkbox
+                v-model="optionsData.collection_media"
+                :label="util.getText('exportAudioToCollectionMedia')"
+                @update:model-value="saveOptions"
+                density="compact"
+                hide-details
+              ></v-checkbox>
             </v-col>
           </v-row>
         </v-container>
@@ -86,8 +100,8 @@
 
 <script>
 import { Model, Deck, Note, Package as AnkiPackage } from '../lib/genanki.js';
-import JSZip from "jszip";
-import { saveAs } from "file-saver";
+// import JSZip from "jszip";
+// import { saveAs } from "file-saver";
 
 export default {
   components: { 
@@ -109,6 +123,10 @@ export default {
     showMessage: {
       type: Function,
       required: true
+    },
+    appName: {
+      type: String,
+      default: ''
     }
   },
   
@@ -128,7 +146,7 @@ export default {
     exportDialogTitle() {
       const wordsToExport = this.getValidWordsForExport();
       return `${ typeof wordsToExport === 'string' ? wordsToExport : `${ util.getText('Words') } - ${wordsToExport.length}`}`;
-    },
+    }
   },
   
   methods: {
@@ -137,8 +155,10 @@ export default {
     },
 
     async initializeComponent() {
-        this.deckName = `duo2anki - ` + util.getCurrentCourse();
-        this.nodeType = `!duo2anki - ` + util.getCurrentCourse();
+      const course = util.getCurrentCourse();
+      const courseText =  course ? `- ${course}`: '';
+      this.deckName = `${this.appName}${ courseText }`;
+      this.nodeType = `!${this.appName}${ courseText }`;
     },
 
     get_id_from_name(name) {
@@ -151,9 +171,20 @@ export default {
         return util.getText('No words to process or request count is 0.');
       }
 
-      const words = this.optionsData.exportWithContextOnly
-        ? this.db_words.filter(word => word.context && word.context.trim() !== '')
-        : this.db_words;
+      let words = this.db_words.filter(word => !word.archived);
+
+      if (this.appName === 'kindle2anki') {
+        if (this.optionsData.exportWithImagesOnly) {
+          words = words.filter(word => word.image && word.image.trim() !== '');
+        }
+        if (this.optionsData.exportWithTranslationsOnly) {
+          words = words.filter(word => word.back && word.back.trim() !== '');
+        }
+      } else { // duo2anki
+        if (this.optionsData.exportWithContextOnly) {
+          words = words.filter(word => word.context && word.context.trim() !== '');
+        }
+      }
 
       if (words.length === 0) {
         return util.getText('anki_noMatchingWords');
@@ -165,7 +196,6 @@ export default {
       const wordsToExport = this.getValidWordsForExport();
       if (typeof wordsToExport === 'string') {
         this.showMessage(wordsToExport, 'warning');
-        closeDialog();
         return;
       }
       
@@ -216,8 +246,9 @@ export default {
               ease_factor: item.ease_factor,
           } : null;
 
-          const soundUrl = util.get_sound_url(item);
+          const soundUrl = util.get_sound_url(item, util.SOUND_MODE.FRONT_WORD);
           let soundField = soundUrl; // Default to URL
+          console.log('Sound URL:', soundUrl);
 
           if (soundUrl && this.optionsData.collection_media) {
             try {
@@ -248,7 +279,9 @@ export default {
         }
 
         // Now that all notes and media are added, write the file
-        const fileName = `duo2anki - ${ util.getCurrentCourse() }.apkg`;
+        const course = util.getCurrentCourse();
+        const courseText =  course ? `- ${course}`: '';
+        const fileName = `${this.appName}${courseText}-${ wordsToExport.length } words-${ new Date().toISOString().split('T')[0] }.apkg`;
         ankiPackage.writeToFile(fileName);
         this.showMessage(fileName, 'success');
       } catch (error) {

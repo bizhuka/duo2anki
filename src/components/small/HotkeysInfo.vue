@@ -6,7 +6,7 @@
         <v-list-item>
           <v-list-item-title>
             <v-chip color="primary" label size="small" class="me-2">Alt + W</v-chip>
-            {{ util.getText('Open/Close Duo2Anki Side Panel') }}
+            {{ util.getText('Open/Close Side Panel', [appName]) }}
           </v-list-item-title>
         </v-list-item>
       </v-list>
@@ -52,10 +52,14 @@
 import { util } from '@/lib/util'; // Import util
 
 // Define props
-const props = defineProps({
+const { optionsData, appName } = defineProps({
   optionsData: {
     type: Object,
     required: true
+  },
+  appName: {
+    type: String,
+    default: ''
   }
 });
 </script>

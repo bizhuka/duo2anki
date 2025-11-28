@@ -8,8 +8,9 @@ const GAMES = [
     { id: 'sconstructor_backGame', name: util.getText('constructorBack'), url: '/src/games/SConstructor/index.html?consMode=backGame' },
 ];
 
-export const RANDOM_GAME_NOTIFICATION_ID = 'duo2anki-random-game';
+export const RANDOM_GAME_NOTIFICATION_ID = 'app-random-game';
 
+if(chrome.alarms)
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'randomGameAlarm') {
         chrome.notifications.create(RANDOM_GAME_NOTIFICATION_ID, {
@@ -22,6 +23,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
+if(chrome.notifications)
 chrome.notifications.onClicked.addListener((notificationId) => {
     if (notificationId === RANDOM_GAME_NOTIFICATION_ID) {
         const randomGame = GAMES[Math.floor(Math.random() * GAMES.length)];
