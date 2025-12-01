@@ -6,8 +6,10 @@ function getApiHost(isLocal) {
 }
 
 export function isLocalExtension() {
-  try {
-    return chrome?.runtime?.id !== "ilcpcjkfnmgmjknmoclnlelkcaiibnkf";
+  try {    
+    extension_id = chrome?.runtime?.id || "";
+    return extension_id !== "ilcpcjkfnmgmjknmoclnlelkcaiibnkf" &&
+           extension_id !== "lbmmipgdkklfhencdebpjjnpenifehle";
   } catch (error) {
     return false;
   }

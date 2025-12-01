@@ -5,7 +5,8 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:kindle": "set BUILD_PRODUCT=kindle&& vite build --outDir dist-kindle2anki",
+    "build:duo": "set BUILD_PRODUCT=duo&& vite build --outDir dist-duo2anki",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -79,12 +79,6 @@ export default {
       };
     });
 
-    function _IsValidImageSource(src) {
-      if (!src || typeof src !== 'string') return false;
-      // Basic check for common image extensions or base64 data URI
-      return /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(src) || src.startsWith('data:image/');
-    }
-
     const methods = {
       handleDragOver(event) {
         event.preventDefault(); // Necessary to allow dropping
@@ -98,7 +92,7 @@ export default {
         const urlData = event.dataTransfer.getData('text/uri-list');
 
         // If a valid URL is found
-        if (_IsValidImageSource(urlData)) {
+        if (util.isValidImageSource(urlData)) {
           emit('update:image', urlData);
           // Note: Saving might be desired here too, depending on workflow.
           // Currently, only file drops trigger an immediate save.

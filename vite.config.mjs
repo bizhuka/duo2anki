@@ -13,6 +13,8 @@ import { fileURLToPath, URL } from 'node:url'
 // https://vitejs.dev/config/
 export default defineConfig({
 
+  publicDir: false, // Prevent auto-copying all files from public/
+
   build: {
     chunkSizeWarningLimit: 2000, // Adjust chunk size warning limit to 2000 kB
     rollupOptions: {
@@ -63,26 +65,28 @@ export default defineConfig({
 
     viteStaticCopy({
       targets: [
-        // {
-        //   src: 'src/lib/dexie.min.mjs',
-        //   dest: './lib/',
-        // },
-        // {
-        //   src: 'src/duolingo_loader.js',
-        //   dest: './',
-        // },
-        // {
-        //   src: 'src/background.js',
-        //   dest: './',
-        // },
-        // {
-        //   src: 'src/util.js',
-        //   dest: './',
-        // },
         {
           src: 'node_modules/sql.js/dist/sql-wasm.wasm',
-          dest: 'js/sql' // This will copy to dist/js/sql/sql-wasm.wasm
-        }
+          dest: 'js/sql'
+        },
+        // Copy shared assets
+        {
+          src: 'public/images',
+          dest: './'
+        },
+        // Copy correct manifest based on BUILD_PRODUCT
+        ...(process.env.BUILD_PRODUCT === 'kindle'
+          ? [
+              { src: 'public/manifest-k.json', dest: './', rename: 'manifest.json' },
+              { src: 'public/icon-k.png', dest: './', rename: 'icon.png' }
+            ]
+          : process.env.BUILD_PRODUCT === 'duo'
+          ? [
+              { src: 'public/manifest-d.json', dest: './', rename: 'manifest.json' },
+              { src: 'public/icon-d.png', dest: './', rename: 'icon.png' }
+            ]
+          : []
+        )
       ],
     }),
 

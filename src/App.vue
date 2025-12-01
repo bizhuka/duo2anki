@@ -119,6 +119,25 @@ export default {
       });
     },
 
+    add_image_to_word(imageUrl) {
+      // Check if EditDialog is currently open
+      const editDialog = this.$refs.wordsTab?.$refs?.editDialog;
+      if (!editDialog || !editDialog.dialog.show) {
+        this.showMessage('Please open a word for editing first.', 'error');
+        return;
+      }
+
+      // Validate the image URL
+      if (!util.isValidImageSource(imageUrl)) {
+        this.showMessage('Invalid image URL.', 'error');
+        return;
+      }
+
+      // Set the image and auto-save
+      editDialog.dialog.editingWord.image = imageUrl;
+      editDialog.methods.saveEdit();
+    },
+
     showMessage(message, type = 'info') {
       this.$refs.infoAlert.showMessage(message, type);
 
@@ -161,7 +180,7 @@ export default {
       try {
         const course_id = this.optionsData.current_course_id ?? util.options.current_course_id;
         this.db_words = course_id ? await this.dbProxy.select(course_id) : [];
-        console.log(`Loaded ${this.db_words.length} words from course ID ${course_id}`);
+        // console.log(`Loaded ${this.db_words.length} words from course ID ${course_id}`);
       } catch (error) {
         console.error(util.getText('Error loading words from database:'), error);
         this.db_words = []; // Reset on error

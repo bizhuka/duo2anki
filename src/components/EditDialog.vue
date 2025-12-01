@@ -152,7 +152,20 @@ export default {
       } else {
         window.removeEventListener('keydown', handleKeydown);
       }
+      // Update storage when dialog visibility changes
+      updateEditingWordStorage();
     });
+
+    // Watch for changes to the editing word's front text
+    watch(() => dialog.editingWord?.front, () => {
+      updateEditingWordStorage();
+    });
+
+    // Helper function to update storage
+    const updateEditingWordStorage = () => {
+      const frontText = dialog.show && dialog.editingWord?.front ? dialog.editingWord.front : null;
+      chrome.storage.local.set({ editingWordFront: frontText });
+    };
 
     async function _checkIsSaved() {
       if (!dialog.editingWord || !dialog.prevWord)

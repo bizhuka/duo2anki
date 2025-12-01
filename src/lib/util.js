@@ -234,6 +234,13 @@ export const util = {
     return true;
   },
 
+  // Validate image source URL or data URI
+  isValidImageSource(src) {
+    if (!src || typeof src !== 'string') return false;
+    // Basic check for common image extensions or base64 data URI
+    return /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(src) || src.startsWith('data:image/');
+  },
+
   // Helper to open/update the image search tab
   async openImageSearchTab(word, addParam = '') {
     if (!word) return; // Don't proceed if no word is provided
