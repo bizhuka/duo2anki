@@ -94,8 +94,7 @@ export default {
         // If a valid URL is found
         if (util.isValidImageSource(urlData)) {
           emit('update:image', urlData);
-          // Note: Saving might be desired here too, depending on workflow.
-          // Currently, only file drops trigger an immediate save.
+          emit('save');
           return; // Exit after handling URL
         }
 
