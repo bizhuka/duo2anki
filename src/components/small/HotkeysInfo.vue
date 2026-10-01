@@ -1,12 +1,12 @@
 <template>
-  <v-container fluid :data-lang="optionsData.pluginLanguage">
+  <v-container fluid>
     <v-card variant="outlined">
       <v-card-title class="text-h6">{{ util.getText('Application Hotkeys') }}</v-card-title>
       <v-list density="compact">
         <v-list-item>
           <v-list-item-title>
-            <v-chip color="primary" label size="small" class="me-2">Alt + W</v-chip>
-            {{ util.getText('Open/Close Side Panel', [appName]) }}
+            <v-chip color="primary" label size="small" class="me-2">Alt + A</v-chip>
+            {{ util.getText('Open/Close Side Panel', ['duo2anki']) }}
           </v-list-item-title>
         </v-list-item>
       </v-list>
@@ -52,15 +52,11 @@
 import { util } from '@/lib/util'; // Import util
 
 // Define props
-const { optionsData, appName } = defineProps({
+const { optionsData } = defineProps({
   optionsData: {
     type: Object,
     required: true
   },
-  appName: {
-    type: String,
-    default: ''
-  }
 });
 </script>
 

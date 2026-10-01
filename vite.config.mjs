@@ -12,10 +12,10 @@ import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-
+    
   publicDir: false, // Prevent auto-copying all files from public/
 
-  build: {
+  build: {   
     chunkSizeWarningLimit: 2000, // Adjust chunk size warning limit to 2000 kB
     rollupOptions: {
       input: {
@@ -69,24 +69,9 @@ export default defineConfig({
           src: 'node_modules/sql.js/dist/sql-wasm.wasm',
           dest: 'js/sql'
         },
-        // Copy shared assets
-        {
-          src: 'public/images',
-          dest: './'
-        },
-        // Copy correct manifest based on BUILD_PRODUCT
-        ...(process.env.BUILD_PRODUCT === 'kindle'
-          ? [
-              { src: 'public/manifest-k.json', dest: './', rename: 'manifest.json' },
-              { src: 'public/icon-k.png', dest: './', rename: 'icon.png' }
-            ]
-          : process.env.BUILD_PRODUCT === 'duo'
-          ? [
-              { src: 'public/manifest-d.json', dest: './', rename: 'manifest.json' },
-              { src: 'public/icon-d.png', dest: './', rename: 'icon.png' }
-            ]
-          : []
-        )
+        // Copy the single duo2anki extension identity.
+        { src: 'public/manifest-d.json', dest: './', rename: 'manifest.json' },
+        { src: 'public/icon-d.png', dest: './', rename: 'icon.png' }
       ],
     }),
 

@@ -1,6 +1,6 @@
 <template>
   <!-- Bind the computed style to set the CSS variable -->
-  <div class="rich-text-editor-wrapper mb-2" :style="editorStyle" :data-lang="optionsData.pluginLanguage">
+  <div class="rich-text-editor-wrapper mb-2" :style="editorStyle">
     <label v-if="label" class="v-label v-label--clickable">{{ label }}</label>
     <QuillEditor
       :content="modelValue"

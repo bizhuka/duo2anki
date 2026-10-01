@@ -1,5 +1,10 @@
 export const duolingoCourses = [
     {
+        "code": "EN",
+        "language": "English",
+        "voices": []
+    },
+    {
         "code": "ES",
         "language": "Spanish",
         "voices": [
@@ -278,48 +283,14 @@ export const duolingoCourses = [
 ];
 
 export function getDuolingoCourseLanguage(lang_id) {
-    const course = duolingoCourses.find(course => course.code === lang_id);
+    const course = duolingoCourses.find(course => course.code === (lang_id === 'UK' ? 'UA' : lang_id));
     return course ? course.language : null;
 }
 
-// No separate languageFlags export needed
+import enTranslations from './en.js';
 
-// Import language files (Sorted Alphabetically)
-import arTranslations from './ar.js'; // Arabic
-import deTranslations from './de.js'; // German
-import enTranslations from './en.js'; // English
-import esTranslations from './es.js'; // Spanish
-import frTranslations from './fr.js'; // French
-import hiTranslations from './hi.js'; // Hindi
-import itTranslations from './it.js'; // Italian
-import jaTranslations from './ja.js'; // Japanese
-import kkTranslations from './kk.js'; // Kazakh
-import koTranslations from './ko.js'; // Korean
-import ptTranslations from './pt.js'; // Portuguese
-import ruTranslations from './ru.js'; // Russian
-import trTranslations from './tr.js'; // Turkish
-import uaTranslations from './ua.js'; // Ukrainian
-import zhTranslations from './zh.js'; // Chinese
-
-export const pluginsTranslations = {
-    AR: { flag: '/images/flags/sa.png', native: 'العربية', translations: arTranslations }, // Saudi Arabia
-    DE: { flag: '/images/flags/de.png', native: 'Deutsch', translations: deTranslations }, // Germany
-    EN: { flag: '/images/flags/us.png', native: 'English', translations: enTranslations }, // USA
-    ES: { flag: '/images/flags/es.png', native: 'Español', translations: esTranslations }, // Spain
-    FR: { flag: '/images/flags/fr.png', native: 'Français', translations: frTranslations }, // France
-    HI: { flag: '/images/flags/in.png', native: 'हिन्दी', translations: hiTranslations }, // India
-    IT: { flag: '/images/flags/it.png', native: 'Italiano', translations: itTranslations }, // Italy
-    JA: { flag: '/images/flags/jp.png', native: '日本語', translations: jaTranslations }, // Japan
-    KK: { flag: '/images/flags/kz.png', native: 'Қазақша', translations: kkTranslations }, // Kazakhstan
-    KO: { flag: '/images/flags/kr.png', native: '한국어', translations: koTranslations }, // South Korea
-    PT: { flag: '/images/flags/br.png', native: 'Português', translations: ptTranslations }, // Brazil
-    RU: { flag: '/images/flags/ru.png', native: 'Русский', translations: ruTranslations }, // Russia
-    TR: { flag: '/images/flags/tr.png', native: 'Türkçe', translations: trTranslations }, // Turkey
-    UA: { flag: '/images/flags/ua.png', native: 'Українська', translations: uaTranslations }, // Ukraine
-    ZH: { flag: '/images/flags/cn.png', native: '中文', translations: zhTranslations }, // China
-};
-export function get_translated_text(text, language, args = []){
-  let translation = pluginsTranslations[language]?.translations?.[text] // Access nested translations object
+export function get_translated_text(text, args = []){
+    let translation = enTranslations[text];
   if(!translation){
     console.error('Missing translation for text:', text);
     translation = '!!! ' + text; 

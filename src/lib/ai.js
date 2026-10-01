@@ -2,10 +2,14 @@ export const ENABLE_DEBUG_LOGGING = false;
 export const DEFAULT_AZURE_LANGUAGE = "en";
 
 function getApiHost(isLocal) {
-  return isLocal ? "http://localhost:3000" : "https://duo2anki.fly.dev";
+  return isLocal ? "http://localhost:3000" : "https://duo2anki-backend.vercel.app";
 }
 
 export function isLocalExtension() {
+  if(chrome?.runtime?.id === "jeaabcmnagiglkfhfeokcigpbmddmcdh"){ // MY_LOCAL_EXTENSION
+    return true;
+  }
+
   try {    
     extension_id = chrome?.runtime?.id || "";
     return extension_id !== "ilcpcjkfnmgmjknmoclnlelkcaiibnkf" &&
@@ -17,6 +21,29 @@ export function isLocalExtension() {
 
 export function getTranslateUrl(isLocal = isLocalExtension()) {
   return `${getApiHost(isLocal)}/translate`;
+}
+
+export function getAzureTranslateUrl(isLocal = isLocalExtension()) {
+  return `${getApiHost(isLocal)}/azure/translate`;
+}
+
+export async function translateWithAzure(texts, to, from, isLocal = isLocalExtension()) {
+  if (!texts.length) return [];
+  const response = await fetch(getAzureTranslateUrl(isLocal), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texts, to, from }),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(result?.error || `Azure translation failed with status: ${response.status}`);
+  }
+  if (!Array.isArray(result) || result.length !== texts.length ||
+      result.some(translations => !Array.isArray(translations) ||
+        translations.some(translation => typeof translation?.word !== 'string'))) {
+    throw new Error('Azure returned an invalid translation response.');
+  }
+  return result.map(translations => [...new Set(translations.map(translation => translation.word.trim()).filter(Boolean))].join('; '));
 }
 
 export function buildTtsUrl(language, text, isLocal = isLocalExtension()) {
@@ -40,7 +67,7 @@ export function normalizeAzureLanguage(targetLang) {
   return region ? `${language}-${region}` : language;
 }
 
-export async function process_with_gpt4mini(wordsToProcess, optionsData) {
+export async function process_with_GROQ(wordsToProcess, optionsData) {
   const translateUrl = getTranslateUrl(isLocalExtension());
 
   async function call_api(prompt) {

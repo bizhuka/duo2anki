@@ -21,26 +21,52 @@ class MessageHandler {
         if (!MessageHandler.instance) {
             MessageHandler.instance = new MessageHandler();
 
-            // Load options and set course_id
-            await util.read_options();
-            MessageHandler.instance.set_course_id(util.options.current_course_id);
+            MessageHandler.instance.initialization = (async () => {
+                await util.read_options();
+            })();
         }
+        await MessageHandler.instance.initialization;
         return MessageHandler.instance;
     }
 
-    async set_course_id(course_id) {
-        const course_info = util.get_course_info(course_id);
+    async set_course_id(course_id, tabId) {
+        if (tabId < 0 || !Number.isInteger(tabId) || !util.get_course_info(course_id).targetLang) return;
+        this.tabCourses ??= new Map();
+        if (this.tabCourses.get(tabId)?.course_id !== course_id) {
+            this.tabCourses.set(tabId, { course_id });
+        }
+        for (const waiter of this.courseWaiters || []) {
+            if (waiter.tabId === tabId) waiter.resolve();
+        }
+    }
 
-        this.course_id = course_id;
-        this.targetLang = course_info.targetLang;
-        this.sourceLang = course_info.sourceLang;
+    async wait_for_course(tabId) {
+        if (this.tabCourses?.has(tabId)) return this.tabCourses.get(tabId);
+        await new Promise((resolve, reject) => {
+            this.courseWaiters ??= new Set();
+            const waiter = { tabId, resolve: null };
+            const onReady = () => {
+                clearTimeout(timeout);
+                this.courseWaiters.delete(waiter);
+                resolve();
+            };
+            const timeout = setTimeout(() => {
+                this.courseWaiters.delete(waiter);
+                reject(new Error('Could not verify the Duolingo course in this tab. No words were imported. Please reload the Words page and try again.'));
+            }, 30000);
+            waiter.resolve = onReady;
+            this.courseWaiters.add(waiter);
+        });
+        return this.tabCourses.get(tabId);
     }
 
     async extract_vocabulary(tabId) {
-        // Ensure targetLang is available before executing the script
-        if (!this.targetLang) {
-            throw new Error(util.getText("bg_targetLangMissing"));
-        }
+        // Reload so the course request and vocabulary belong to the same fresh page.
+        this.tabCourses?.delete(tabId);
+        await chrome.tabs.reload(tabId);
+        await this.wait_for_words_page(tabId);
+        const course = await this.wait_for_course(tabId);
+        const { course_id } = course;
 
         // Inject the content script into the Duolingo vocabulary page
         const results = await chrome.scripting.executeScript({
@@ -52,22 +78,81 @@ class MessageHandler {
         if (!results || !results[0] || !results[0].result || !Array.isArray(results[0].result)) {
             throw new Error(util.getText("bg_invalidVocabData"), results);
         }
+        if (this.tabCourses.get(tabId) !== course) {
+            throw new Error('The Duolingo course changed during import. Please try again.');
+        }
         const vocabularyWithSound = results[0].result;
-        this.pasteCalculatedFields(vocabularyWithSound);
+        this.pasteCalculatedFields(vocabularyWithSound, course_id);
 
         // Send a message  to update the progress bar
-        chrome.runtime.sendMessage({
+        const saved = await chrome.runtime.sendMessage({
             foreground: true,
             action: 'words_loaded',
             action_params: [vocabularyWithSound],
         });
+        if (saved?.error) throw new Error(saved.error);
     }
 
-    pasteCalculatedFields(vocabularyRaw) {
+    async wait_for_words_page(tabId) {
+        await new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                if (error) reject(error);
+                else resolve();
+            };
+            const onUpdated = (updatedTabId, changeInfo) => {
+                if (updatedTabId === tabId && changeInfo.status === 'complete') finish();
+            };
+            const timeout = setTimeout(() => {
+                finish(new Error('The Duolingo page did not finish loading. Please try again.'));
+            }, 30000);
+            chrome.tabs.onUpdated.addListener(onUpdated);
+            chrome.tabs.get(tabId).then(tab => {
+                if (tab.status === 'complete') finish();
+            }, finish);
+        });
+
+        const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: async () => {
+                const isReady = () => [...document.querySelectorAll('section')].some(section => {
+                    const item = section.querySelector('ul > li');
+                    return item?.querySelector('h3') && item?.querySelector('p');
+                });
+                if (isReady()) return true;
+                return await new Promise(resolve => {
+                    const finish = (result) => {
+                        clearTimeout(timeout);
+                        observer.disconnect();
+                        resolve(result);
+                    };
+                    const observer = new MutationObserver(() => {
+                        if (isReady()) finish(true);
+                    });
+                    const timeout = setTimeout(() => {
+                        finish({ error: 'The Duolingo word list did not finish loading. Sign in on the Words page and try again.' });
+                    }, 30000);
+                    observer.observe(document, { childList: true, subtree: true });
+                    if (isReady()) finish(true);
+                });
+            },
+        });
+        const result = results?.[0]?.result;
+        if (result !== true) {
+            throw new Error(result?.error || 'The Duolingo word list is not ready. Please try again.');
+        }
+    }
+
+    pasteCalculatedFields(vocabularyRaw, course_id) {
+        const { targetLang, sourceLang } = util.get_course_info(course_id);
         for (const item of vocabularyRaw) {
-            item.course_id = this.course_id;
-            item.targetLang = this.targetLang;
-            item.sourceLang = this.sourceLang;
+            item.course_id = course_id;
+            item.targetLang = targetLang;
+            item.sourceLang = sourceLang;
         }
     }
 
@@ -88,16 +173,17 @@ class MessageHandler {
 }
 
 chrome.webRequest.onBeforeRequest.addListener(async (details) => {
+    if (!Number.isInteger(details.tabId) || details.tabId < 0) return;
     // Updated regex to capture target and optional source language codes separately
     const match = details.url.match(/courses\/DUOLINGO_([^/?]*)\?/);
     if (match && match[1]) {
         const course_id = match[1].toLowerCase();
-        if(!course_id){
-            return
+        if (!course_id) {
+            return;
         }
 
         const handlerInstance = await MessageHandler.get_instance();
-        handlerInstance.set_course_id(course_id);
+        await handlerInstance.set_course_id(course_id, details.tabId);
         await util.save_options({ current_course_id: course_id });
 
         chrome.runtime.sendMessage({

@@ -1,5 +1,5 @@
 <template>
-    <v-dialog v-model="dialog.show" max-width="25rem" :data-lang="optionsData.pluginLanguage">
+    <v-dialog v-model="dialog.show" max-width="25rem">
         <v-card>
             <v-card-title class="text-h5">
                 <v-row no-gutters align="center">

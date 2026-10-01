@@ -1,31 +1,38 @@
 import { util } from './util.js';
-import { process_with_gpt4mini, ENABLE_DEBUG_LOGGING } from './ai.js';
+import { process_with_GROQ, ENABLE_DEBUG_LOGGING } from './ai.js';
 
 async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew) {
     // Use a Promise to handle the asynchronous waiting
     return new Promise((resolve, reject) => {
         const isGrok = ai_model === 'grok'; //util.AI_MODEL.GROK;
         if (ENABLE_DEBUG_LOGGING) console.log(`_get_AI_results started. isGrok: ${isGrok}, firstId: ${firstId}, lastId: ${lastId}, expectedLength: ${expectedLength}, wordIsNew: ${wordIsNew}`);
-        const mainElementSelector = isGrok ? 'body' : '#main'; // Assuming #main is the container
-        const paragraphSelector = isGrok ? 'p[class="break-words"]' : 'p[data-start][data-end]';
-        if (ENABLE_DEBUG_LOGGING) console.log(`Using selectors: mainElementSelector: "${mainElementSelector}", paragraphSelector: "${paragraphSelector}"`);
+        const mainElementSelector = 'body';
+        const resultSelector = isGrok
+            ? '[data-testid="assistant-message"][aria-label="Grok"]'
+            : '[data-markdown-text-style="assistant-message"]';
+        if (ENABLE_DEBUG_LOGGING) console.log(`Using selectors: mainElementSelector: "${mainElementSelector}", resultSelector: "${resultSelector}"`);
         const timeoutDuration = 120 * 1000; // in seconds timeout
 
         const checkParagraphs = () => {
-            function _deleteAttributes(htmlString) {
-                return htmlString.replace(/<([a-z][a-z0-9]*)[^>]*?(\/?)>/gi, '<$1$2>');
+            function _getTextWithLineBreaks(element) {
+                const clone = element.cloneNode(true);
+                clone.querySelectorAll('br').forEach(lineBreak => lineBreak.replaceWith('\n'));
+                return clone.textContent || '';
             }
             function _splitAndTrim(str) {
                 return str.split('→').map(item => item.trim());
             }
 
-            const paragraphs_raw = document.querySelectorAll(paragraphSelector);
-            const paragraphs = isGrok ? Array.from(paragraphs_raw).slice(2) : paragraphs_raw;
+            const resultNodes = Array.from(document.querySelectorAll(resultSelector));
+            const latestResult = resultNodes[resultNodes.length - 1];
+            const paragraphs = latestResult
+                ? Array.from(latestResult.querySelectorAll('p'))
+                : [];
             if (ENABLE_DEBUG_LOGGING) console.log(`Found ${paragraphs.length} paragraphs.`);
 
             if (paragraphs.length === expectedLength) {
-                const firstP = paragraphs[0]?.textContent;
-                const lastP_Array = paragraphs[paragraphs.length - 1]?.textContent?.split('→');
+                const firstP = _getTextWithLineBreaks(paragraphs[0]);
+                const lastP_Array = _splitAndTrim(_getTextWithLineBreaks(paragraphs[paragraphs.length - 1]));
                 const sanitizedFirstP = firstP?.replace(/^\s+/, '');
                 const sanitizedLastId = lastP_Array?.[0]?.replace(/^\s+/, '');
                 const lastSentence = lastP_Array?.[lastP_Array.length - 1] ?? '';
@@ -47,17 +54,23 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
                     (lastSentenceIncludesDot || lastIdMatches)) {
                     // Return data from all '<p>'
                     if (ENABLE_DEBUG_LOGGING) console.log('Conditions met for expectedLength. Returning data.');
-                    return Array.from(paragraphs).map(p => _splitAndTrim(_deleteAttributes(p.innerHTML)));
+                    return Array.from(paragraphs).map(p => _splitAndTrim(_getTextWithLineBreaks(p)));
                 }
-            } else if (paragraphs.length === 1 && (paragraphs[0].innerHTML.split('→').length - 1 === expectedLength * (5 - 1))) {
-                const parts = _deleteAttributes(paragraphs[0].innerHTML).split('<br>');
+            } else if (paragraphs.length === 1) {
+                const responseText = _getTextWithLineBreaks(paragraphs[0]);
+                const arrowCount = (responseText.match(/→/g) || []).length;
+                if (arrowCount !== expectedLength * (5 - 1)) {
+                    return null;
+                }
+
+                const parts = responseText.split(/\r?\n/).map(part => part.trim()).filter(Boolean);
                 const lastP_Array = _splitAndTrim(parts[parts.length - 1]);
                 const sanitizedLastId = lastP_Array?.[0]?.replace(/^\s+/, '');
                 const lastSentence = lastP_Array?.[lastP_Array.length - 1] ?? '';
                 const lastSentenceIncludesDot = lastSentence.indexOf('.') > 0;
                 const lastIdMatches = sanitizedLastId?.startsWith(lastId.toString());
                 if (ENABLE_DEBUG_LOGGING) console.log('Checking condition for single paragraph:', {
-                    'innerHTML': paragraphs[0].innerHTML,
+                    'textContent': responseText,
                     'parts': parts,
                     'lastP_Array': lastP_Array,
                     'last_item': lastP_Array[lastP_Array.length - 1],
@@ -105,6 +118,13 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
         if (ENABLE_DEBUG_LOGGING) console.log('Starting observer.');
         // Observe changes in children and subtree
         observer.observe(targetNode, { childList: true, subtree: true });
+
+        const initialResult = checkParagraphs();
+        if (initialResult) {
+            clearTimeout(timeoutId);
+            observer.disconnect();
+            resolve(initialResult);
+        }
     });
 }
 
@@ -113,11 +133,7 @@ function _update_context(results, wordsToProcess, add_2_back) {
         const word = wordsToProcess.find(w => w.id.toString() === result.id.toString() || (w.id === util.WORD_IS_NEW && w.front === result.front));
         if (word) {
             word.context = result.context;
-            if (add_2_back && word.back) {
-                word.back += ` → ${result.back}`;
-            } else {
-                word.back = result.back;
-            }
+            word.back = util.mergeTranslationBack(word.back, result.back, add_2_back);
         }
     }
     return wordsToProcess;
@@ -157,7 +173,7 @@ export async function processContexts(inWords, optionsData, actionCallback) {
     const filteredWords = inWords; // inWords is already the filtered list
     const wordsPerRequest = optionsData.words_per_request;
 
-    if (optionsData.ai_model === util.AI_MODEL.GPT4MINI) {
+    if (optionsData.ai_model === util.AI_MODEL.GROQ) {
         const batchesToProcess = [];
         for (let i = 0; i < optionsData.request_count; i++) {
             const startIndex = i * wordsPerRequest;
@@ -169,7 +185,7 @@ export async function processContexts(inWords, optionsData, actionCallback) {
         }
 
         try {
-            const promises = batchesToProcess.map(batch => process_with_gpt4mini(batch, optionsData));
+            const promises = batchesToProcess.map(batch => process_with_GROQ(batch, optionsData));
             const results = await Promise.all(promises);
 
             const actionPromises = [];
@@ -182,7 +198,7 @@ export async function processContexts(inWords, optionsData, actionCallback) {
             }
             await Promise.all(actionPromises);
         } catch (error) {
-            console.error('An error occurred during GPT-4 Mini processing:', error);
+            console.error('An error occurred during GROQ OSS 120b processing:', error);
             throw error; // Re-throw the error to be caught by the caller
         }
         return;

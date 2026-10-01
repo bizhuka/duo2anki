@@ -1,5 +1,5 @@
 <template>
-    <div class="kindle-import" :data-lang="optionsData.pluginLanguage">
+    <div class="kindle-import">
         <v-card class="pa-4" variant="flat">
             <FileDropZone ref="kindleDropZoneRef" icon="mdi-database-import"
                 idle-label="Drop Kindle vocabulary DB 'vocab.db' here or click to select"
@@ -9,6 +9,7 @@
                 Kindle saves the vocabulary builder database at <code>Kindle/system/vocabulary/vocab.db</code> when the device is mounted.
             </v-card-subtitle>
 
+            <div v-show="false">
             <FileDropZone ref="dictionaryDropZoneRef" class="mt-6" icon="mdi-book-open-page-variant"
                 idle-label="Drop Kobo dictionary .zip or .dicthtml file here or click to select"
                 accept=".zip,.dicthtml" :processing="dictIsProcessing"
@@ -16,7 +17,9 @@
             <v-card-subtitle class="text-center pt-2">
                 You can download custom unencrypted dictionaries from <a href="https://www.mobileread.com/forums/showthread.php?t=232883" target="_blank">here</a>.
             </v-card-subtitle>
+            </div>
         </v-card>
+
     </div>
 </template>
 
@@ -215,31 +218,7 @@ function groupWordsByPrefix(words) {
 }
 
 function mergeWithReturn(existingText, addition, deleteBrackets = false) {
-    const trimmed_existingText = (existingText || '').trim();
-    const trimmed_addition = (addition || '').trim();
-
-    if (!trimmed_addition) {
-        return trimmed_existingText;
-    }
-
-    if (!trimmed_existingText) {
-        return trimmed_addition;
-    }
-
-    const big   = trimmed_existingText.length > trimmed_addition.length ? trimmed_existingText : trimmed_addition;
-    const small = trimmed_existingText.length > trimmed_addition.length ? trimmed_addition     : trimmed_existingText;
-    
-    // Remove all whitespace for comparison
-    let _big   = big.replace(/\s/g, '')
-    let _small = small.replace(/\s/g, '')
-
-    // Optionally remove [bracketed] content at start
-    if(deleteBrackets){
-       _big  = _big.replace(/^\[.*?\]/, '');
-       _small = _small.replace(/^\[.*?\]/, '');
-    }
-
-    return _big.includes(_small) ? big : `${trimmed_existingText} ⏎ ${trimmed_addition}`;
+    return util.mergeWithReturn(existingText, addition, deleteBrackets);
 }
 
 async function importKindleLookups(buffer) {
@@ -344,7 +323,7 @@ async function importKindleLookups(buffer) {
                 context,
                 date: parseKindleTimestamp(row[columnIndex.date]),
                 transcription: transcriptionValue,
-                targetLang: row[columnIndex.word_lang] || '',
+                targetLang: row[columnIndex.word_lang] || row[columnIndex.book_lang] || '',
                 //   sourceLang: courseInfo.sourceLang,
             },
         });

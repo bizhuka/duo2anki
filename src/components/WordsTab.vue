@@ -1,22 +1,27 @@
 <template>
-  <div :data-lang="optionsData.pluginLanguage">
+  <div class="words-tab">
        <v-card flat class="pagination-card mb-2">
-        <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem;">
-          <ActionButton v-if="appName === 'duo2anki'" :icon="hasDuolingoPage ? 'mdi-download' : 'mdi-open-in-new'"
+        <div class="d-flex flex-wrap justify-end px-2" style="margin-bottom: 0.5rem;">
+          <ActionButton :icon="hasDuolingoPage ? 'mdi-download' : 'mdi-open-in-new'"
             :tooltipText="hasDuolingoPage ? util.getText('Load Words') : util.getText('Open Words Page')" color="primary"
-            :loading="loadingButton" :dataLang="optionsData.pluginLanguage" @click="loadWords" />
-          <ActionButton v-if="appName === 'duo2anki'" icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
-            :loading="loadingTable" :dataLang="optionsData.pluginLanguage" @click="openContextDialog" />
-          <ActionButton icon="mdi-archive-arrow-down-outline" :tooltipText="util.getText('Archive all')" color="error"
-            :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="archiveAllWords" />
-          <ActionButton icon="mdi-delete" :tooltipText="util.getText('Delete all')" color="error"
-            :disabled="!db_words.length" :dataLang="optionsData.pluginLanguage" @click="clearHistory" />
+            :loading="loadingButton" @click="loadWords" />
+          <ActionButton v-if="isDuolingo" icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
+            :loading="loadingTable" @click="openContextDialog" />
+          <ActionButton icon="mdi-translate" :tooltipText="util.getText('Translate words')" color="primary"
+            :loading="translatingWords" :disabled="!db_words.length || loadingTable || loadingButton"
+            @click="$refs.translateWordsDialog.openTranslationDialog()" />
+          <ActionButton icon-only :icon="allCourseWordsArchived ? 'mdi-archive-arrow-up-outline' : 'mdi-archive-arrow-down-outline'"
+            :tooltipText="util.getText(allCourseWordsArchived ? 'Unarchive &quot;{0}&quot;' : 'Archive &quot;{0}&quot;', [courseName])"
+            :color="allCourseWordsArchived ? 'success' : 'error'"
+            :disabled="!courseWords.length || loadingTable" @click="archiveAllWords" />
+          <ActionButton icon-only icon="mdi-delete" :tooltipText="util.getText('Delete &quot;{0}&quot;', [courseName])" color="error"
+            :disabled="!courseWords.length || loadingTable" @click="clearHistory" />
         </div>
 
       <v-text-field autofocus density="compact" v-model="search" clearable hide-details
           :label="util.getText('Search')">
         <template v-slot:append-inner v-if="search && !db_words.some(word => word.front.toLowerCase() === search.trim().toLowerCase())">
-          <v-tooltip location="top" v-if="appName === 'duo2anki'">
+          <v-tooltip location="top" v-if="isDuolingo">
             <template v-slot:activator="{ props }">
               <v-icon v-bind="props" @click="handleAddWord" color="success">mdi-plus</v-icon>
             </template>
@@ -84,16 +89,21 @@
       :optionsData="optionsData" />
     <ConfirmDialog ref="confirmDialog" :optionsData="optionsData" />
     <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"/>
+    <TranslateWordsDialog ref="translateWordsDialog" :optionsData="optionsData" :saveOptions="saveOptions"
+      :dbProxy="dbProxy" :showMessage="showMessage" @refresh-words="$emit('refresh-words')"
+      @update:loading="translatingWords = $event" />
   </div>
 </template>
 
 <script>
 import { util } from '../lib/util.js';
 import { processContexts } from '../lib/contextProcessor.js';
+import TranslateWordsDialog from './TranslateWordsDialog.vue';
 
 const DUOLINGO_WORDS_URL = 'https://www.duolingo.com/practice-hub/words';
 
 export default {
+  components: { TranslateWordsDialog },
   props: {
     db_words: {
       type: Array,
@@ -115,10 +125,6 @@ export default {
       type: Function,
       required: true,
     },
-    appName: {
-      type: String,
-      default: ''
-    }
   },
   emits: [
     'refresh-words' // Single emit to ask parent to reload words
@@ -130,11 +136,25 @@ export default {
       itemsPerPage: 10,
       loadingButton: false,
       loadingTable: false,
+      translatingWords: false,
       hasDuolingoPage: false,
       util: util, // Expose util to the template
     };
   },
   computed: {
+    courseName() {
+      const courseId = this.optionsData.current_course_id;
+      return courseId ? `${util.getCurrentCourse()} (${courseId})` : '';
+    },
+    courseWords() {
+      return this.db_words.filter(word => word.course_id === this.optionsData.current_course_id);
+    },
+    allCourseWordsArchived() {
+      return this.courseWords.length > 0 && this.courseWords.every(word => word.archived);
+    },
+    isDuolingo() {
+      return this.optionsData.current_course_id !== 'kindle';
+    },
     filteredWords() {
       if (!this.search) return this.db_words;
       const searchLower = this.search.trim().toLowerCase();
@@ -154,76 +174,92 @@ export default {
     },
     async getDuolingoTabId() {
       const allTabs = await chrome.tabs.query({ url: DUOLINGO_WORDS_URL });
-      return allTabs.length > 0 ? allTabs[0].id : null;
+      allTabs.sort((first, second) => Number(second.active) - Number(first.active) ||
+        (second.lastAccessed || 0) - (first.lastAccessed || 0));
+      return allTabs[0]?.id ?? null;
     },
 
     async checkDuolingoPageLoaded() {
       this.hasDuolingoPage = !!await this.getDuolingoTabId();
     },
 
+    async openWordsPage(tabId = null) {
+      let tab;
+      if (tabId !== null) {
+        tab = await chrome.tabs.update(tabId, { url: DUOLINGO_WORDS_URL, active: true });
+      } else {
+        tab = await chrome.tabs.create({ url: DUOLINGO_WORDS_URL, active: true });
+      }
+      this.hasDuolingoPage = true;
+      return tab.id;
+    },
+
     async loadWords() {
       if (this.loadingButton) return;
 
-      const tabId = await this.getDuolingoTabId();
-      // Ensure current_course_id is available
-      if (!tabId || !this.optionsData.current_course_id) {
-        this.showMessage(util.getText('Please open the Duolingo words page first.'), 'info');
-
-        const newTab = await chrome.tabs.create({ url: DUOLINGO_WORDS_URL, active: true });
-        chrome.tabs.onUpdated.addListener(async function listener(tabId, changeInfo) {
-          if (tabId !== newTab.id)
-            return;
-
-          if (changeInfo.status === 'complete' || changeInfo.status === 'error') {
-            chrome.tabs.onUpdated.removeListener(listener);
-            if (this.optionsData.current_course_id) {
-              setTimeout(() => {
-                this.loadWords();
-              }, 2000); // Delay to ensure the page is fully loaded              
-            }
-          }
-        }.bind(this));
-        return;
-      }
       this.loadingButton = true;
       this.loadingTable = true;
-
-      chrome.runtime.sendMessage({
-        background: true,
-        action: "extract_vocabulary",
-        action_params: [tabId]
-      }, (response => {
+      try {
+        let tabId = await this.getDuolingoTabId();
+        if (tabId === null) {
+          tabId = await this.openWordsPage();
+        } else {
+          await chrome.tabs.update(tabId, { active: true });
+        }
+        const response = await chrome.runtime.sendMessage({
+          background: true,
+          action: "extract_vocabulary",
+          action_params: [tabId]
+        });
+        if (response?.error) this.showMessage(response.error, 'error');
+      } catch (error) {
+        this.showMessage(error.message, 'error');
+      } finally {
         this.loadingButton = false;
         this.loadingTable = false;
-        if (response.error) {
-          this.showMessage(response.error, 'error');
-        }
-      }));
+      }
     },
 
     // --- Database Interaction ---
     async archiveAllWords() {
+      const courseId = this.optionsData.current_course_id;
+      if (!courseId || !this.courseWords.length) return;
+      const courseName = this.courseName;
+      const isArchived = !this.allCourseWordsArchived;
       this.$refs.confirmDialog.confirm_popup({
-        message: util.getText('Are you sure you want to archive all words?'),
+        message: util.getText(isArchived ? 'Archive all words in course "{0}"?' : 'Unarchive all words in course "{0}"?', [courseName]),
         action: async () => {
           this.loadingTable = true;
-          await this.dbProxy.archiveAllWords(this.optionsData.current_course_id);
-          this.$emit('refresh-words'); // Ask parent to reload
-          this.showMessage(util.getText('All words archived.'), 'success');
-          this.loadingTable = false;
+          try {
+            await this.dbProxy.archiveAllWords(courseId, isArchived);
+            this.$emit('refresh-words');
+            this.showMessage(util.getText(isArchived ? 'Course "{0}" archived.' : 'Course "{0}" unarchived.', [courseName]), 'success');
+          } catch (error) {
+            this.showMessage(error.message, 'error');
+          } finally {
+            this.loadingTable = false;
+          }
         }
       });
     },
 
     async clearHistory() {
+      const courseId = this.optionsData.current_course_id;
+      if (!courseId) return;
+      const courseName = this.courseName;
       this.$refs.confirmDialog.confirm_popup({
-        message: util.getText('Are you sure you want to delete all words?'),
+        message: util.getText('Delete all words in course "{0}"? Other courses will be kept.', [courseName]),
         action: async () => {
           this.loadingTable = true;
-          await this.dbProxy.clearWords();
-          this.$emit('refresh-words'); // Ask parent to reload
-          this.showMessage(util.getText('All words deleted.'), 'success');
-          this.loadingTable = false;
+          try {
+            await this.dbProxy.clearWords(courseId);
+            this.$emit('refresh-words');
+            this.showMessage(util.getText('All words in course "{0}" deleted.', [courseName]), 'success');
+          } catch (error) {
+            this.showMessage(error.message, 'error');
+          } finally {
+            this.loadingTable = false;
+          }
         }
       });
     },
@@ -332,6 +368,13 @@ export default {
 </script>
 
 <style scoped>
+.words-tab {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 6rem);
+  min-height: 0;
+}
+
 :deep(.archived-row) {
   background-color: #f5f5f5; /* Light grey background */
   color: #9e9e9e; /* Grey text */
@@ -342,7 +385,8 @@ export default {
 
 .data-table-container {
   position: relative;
-  height: calc(100vh - 13.5rem); /* Adjust height calculation as needed */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto; /* Make this container scrollable */

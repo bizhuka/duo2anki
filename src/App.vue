@@ -1,5 +1,5 @@
 <template>
-  <v-app :data-lang="optionsData.pluginLanguage">
+  <v-app>
     <div class="sidepanel-container">
       <v-app-bar density="compact" style="height: 2.3rem;">
         <v-app-bar-title>
@@ -8,8 +8,8 @@
         </v-app-bar-title>
         <v-spacer />
 
-        <!-- Language Selector -->
-        <language-selector v-if="appName === 'duo2anki'" v-model="optionsData.pluginLanguage" @update:modelValue="saveOptions" />
+        <CourseSelector v-model="optionsData.current_course_id" :courseIds="dbCourseIds"
+          :courseWordCounts="dbCourseWordCounts" />
         <!-- Theme Toggle Button -->
         <v-btn density="compact" variant="text" @click="optionsData.lightTheme = !optionsData.lightTheme; saveOptions()"
           style="min-width: 0; padding: 0 2px; font-size: 1.2rem;">
@@ -23,8 +23,8 @@
           <v-card density="compact" style="height: 100%;">
             <v-tabs v-model="activeTab" bg-color="primary" density="compact">              
               <v-tab value="words" density="compact" prepend-icon="mdi-magnify" style="text-transform: none;">{{ util.getText('Words') }}</v-tab>
-              <v-tab v-if="appName === 'kindle2anki'" value="kindle" density="compact" prepend-icon="mdi-book-open-variant" style="text-transform: none;">Kindle Import</v-tab>
-              <v-tab v-if="appName === 'duo2anki'" value="games" density="compact" prepend-icon="mdi-gamepad-variant" style="text-transform: none;">{{ util.getText('games') }}</v-tab>
+              <v-tab value="kindle" density="compact" prepend-icon="mdi-book-open-variant" style="text-transform: none;">Kindle Import</v-tab>
+              <v-tab value="games" density="compact" prepend-icon="mdi-gamepad-variant" style="text-transform: none;">{{ util.getText('games') }}</v-tab>
               <v-tab value="anki" density="compact" prepend-icon="mdi-cards" style="text-transform: none;">{{ util.getText('Anki') }}</v-tab>
               <v-tooltip location="bottom" :open-delay="1000">
                 <template v-slot:activator="{ props }">
@@ -39,10 +39,10 @@
                 <!-- Words Tab -->
                 <v-window-item value="words">
                   <WordsTab ref="wordsTab" :db_words="db_words" :optionsData="optionsData" :saveOptions="saveOptions"
-                    :dbProxy="dbProxy" :showMessage="showMessage" :appName="appName" @refresh-words="loadWordsFromDb" />
+                    :dbProxy="dbProxy" :showMessage="showMessage" @refresh-words="loadWordsFromDb" />
                 </v-window-item>
                 <!-- Kindle Import -->
-                <v-window-item v-if="appName === 'kindle2anki'" value="kindle">
+                <v-window-item value="kindle">
                   <KindleImportTab
                     :optionsData="optionsData"
                     :dbProxy="dbProxy"
@@ -58,12 +58,12 @@
                 <!-- Anki -->
                 <v-window-item value="anki">
                   <Anki :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"
-                    :showMessage="showMessage" :appName="appName" />
+                    :showMessage="showMessage" />
                 </v-window-item>
 
                 <!-- Hotkeys Tab -->
                 <v-window-item value="hotkeys">
-                  <HotkeysInfo :optionsData="optionsData" :appName="appName" />
+                  <HotkeysInfo :optionsData="optionsData" />
                 </v-window-item>
               </v-window>
             </v-card-text>
@@ -78,36 +78,49 @@
 
 <script>
 import { useTheme } from 'vuetify';
-import { ref } from 'vue';
+import { markRaw, ref } from 'vue';
 import HotkeysInfo from './components/small/HotkeysInfo.vue';
-import LanguageSelector from './components/small/LanguageSelector.vue'; // Import the new component
 import WordsTab from './components/WordsTab.vue';
 import GamesTab from './components/GamesTab.vue';
 import Anki from './components/Anki.vue';
 import KindleImportTab from './components/KindleImportTab.vue';
+import CourseSelector from './components/small/CourseSelector.vue';
 
 import { util } from './lib/util.js';
 import { DbProxy } from './lib/database.js';
 
 export default {
-  components: { HotkeysInfo, WordsTab, LanguageSelector, GamesTab, Anki, KindleImportTab }, // Register LanguageSelector
+  components: { HotkeysInfo, WordsTab, GamesTab, Anki, KindleImportTab, CourseSelector },
   data() {
     return {
       activeTab: null,
       dbProxy: null,
       db_words: [],
+      dbCourseIds: [],
+      dbCourseWordCounts: {},
       messageTimeoutId: null, // To store the timeout ID for the info/success message
-      appName: '',
     };
   },
 
   computed: {
+    isKindle() {
+      return this.optionsData.current_course_id === 'kindle';
+    },
     currentCourse() {
       return util.getCurrentCourse();
     },
     chromeRuntimeId() {
       return chrome.runtime.id;
     }
+  },
+
+  watch: {
+    async 'optionsData.current_course_id'() {
+      this.db_words = [];
+      if (!this.isKindle && this.activeTab === 'kindle') this.activeTab = 'words';
+      await this.saveOptions();
+      if (this.dbProxy) await this.loadWordsFromDb();
+    },
   },
 
   methods: {
@@ -129,7 +142,7 @@ export default {
 
       // Validate the image URL
       if (!util.isValidImageSource(imageUrl)) {
-        this.showMessage('Invalid image URL.', 'error');
+        this.showMessage('Invalid image URL. ' + imageUrl, 'error');
         return;
       }
 
@@ -170,16 +183,19 @@ export default {
     },
 
     async words_loaded(all_words) {
-      this.showMessage(util.getText('app_wordsExtracted', [all_words.length]), 'success'); // Show success message
-
       await this.dbProxy.addWords(all_words); // Use db instance from data()
+      if (all_words.length) this.optionsData.current_course_id = all_words[0].course_id;
       await this.loadWordsFromDb(); // Call method to refresh list
+      this.showMessage(util.getText('app_wordsExtracted', [all_words.length]), 'success');
     },
 
     async loadWordsFromDb() {
       try {
+        this.dbCourseIds = await this.dbProxy.getCourseIds();
+        this.dbCourseWordCounts = await this.dbProxy.getCourseWordCounts(this.dbCourseIds);
         const course_id = this.optionsData.current_course_id ?? util.options.current_course_id;
-        this.db_words = course_id ? await this.dbProxy.select(course_id) : [];
+        const words = course_id ? await this.dbProxy.select(course_id) : [];
+        if (course_id === this.optionsData.current_course_id) this.db_words = words;
         // console.log(`Loaded ${this.db_words.length} words from course ID ${course_id}`);
       } catch (error) {
         console.error(util.getText('Error loading words from database:'), error);
@@ -225,23 +241,10 @@ export default {
       return true; // Keep the message port open for async response
     });
 
-    try {
-      const response = await fetch('/manifest.json'); // Fetch from the root
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const manifest = await response.json();
-      this.appName = manifest.name || ''; 
-    } catch (error) {
-      console.error("Error fetching manifest.json:", error);
-      this.appName = 'N/A'; 
-    }
-
     // Initialize database
-    this.dbProxy = new DbProxy();
+    this.dbProxy = markRaw(new DbProxy());
 
     // Ensure optionsData is reactive after async operation
-    this.optionsData = { ...util.options };
     this.toggleTheme();
 
     await this.loadWordsFromDb(); // Load initial words

@@ -6,14 +6,13 @@ export const util = {
   options: reactive({
     lightTheme: true,
     current_course_id: null,
-    pluginLanguage: "EN",
-
     // Context
     ai_model: 'chatgpt',
     prompt_prefix: "",
     request_count: 1,
     words_per_request: 10,
     add_2_back: true,
+    translation_to: 'en',
     ttsProvider: "Responsive Voice",
 
     // Image Search
@@ -21,6 +20,7 @@ export const util = {
 
     // Anki export options
     exportWithContextOnly: true,
+    exportWithAzureTranslationsOnly: true,
     includeScheduleInformation: true,
     collection_media: false,
     exportWithTranslationsOnly: true,
@@ -50,7 +50,7 @@ export const util = {
   AI_MODEL: {
     CHATGPT: 'chatgpt',
     GROK: 'grok',
-    GPT4MINI: 'gpt-4.1-mini',
+    GROQ: 'oss_120b',
   },
 
   TTS_PROVIDER: {
@@ -61,7 +61,8 @@ export const util = {
 
   getCurrentCourse() {
     const course_id = this.options.current_course_id;
-    return course_id ? getDuolingoCourseLanguage(this.get_course_info(course_id).lang_id) : '';
+    if (course_id === 'kindle') return 'Kindle';
+    return course_id ? getDuolingoCourseLanguage(this.get_course_info(course_id).lang_id) || course_id : '';
   },
 
   delete_all_linebreaks: function (text) {
@@ -83,6 +84,34 @@ export const util = {
     if (!text) return "";
     // Or   /<[^>]*>/g  ?
     return text.replace(/<\/?[^>]+(>|$)/g, "").trim();
+  },
+
+  mergeWithReturn(existingText, addition, deleteBrackets = false, separator = ' ⏎ ') {
+    const trimmed_existingText = (existingText || '').trim();
+    const trimmed_addition = (addition || '').trim();
+
+    if (!trimmed_addition) {
+      return trimmed_existingText;
+    }
+    if (!trimmed_existingText) {
+      return trimmed_addition;
+    }
+
+    const big = trimmed_existingText.length > trimmed_addition.length ? trimmed_existingText : trimmed_addition;
+    const small = trimmed_existingText.length > trimmed_addition.length ? trimmed_addition : trimmed_existingText;
+    let _big = big.replace(/\s/g, '');
+    let _small = small.replace(/\s/g, '');
+
+    if (deleteBrackets) {
+      _big = _big.replace(/^\[.*?\]/, '');
+      _small = _small.replace(/^\[.*?\]/, '');
+    }
+
+    return _big.includes(_small) ? big : `${trimmed_existingText}${separator}${trimmed_addition}`;
+  },
+
+  mergeTranslationBack(existingText, translation, addToBack) {
+    return addToBack ? this.mergeWithReturn(existingText, translation, false, ' → ') : translation;
   },
 
   get_sound_url: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
@@ -165,6 +194,7 @@ export const util = {
   },
 
   get_course_info: function (course_id) {
+    if (!course_id || course_id === 'kindle') return {};
     const delimiter = course_id.includes("-") ? "-" : "_";
     const [targetLang, sourceLang] = course_id.split(delimiter);
     const lang_id = targetLang.split("_")[0]?.toUpperCase();
@@ -182,7 +212,7 @@ export const util = {
   },
 
   getText(text, args = []) {
-    return get_translated_text(text, this.options.pluginLanguage, args);
+    return get_translated_text(text, args);
   },
 
   async read_options() {

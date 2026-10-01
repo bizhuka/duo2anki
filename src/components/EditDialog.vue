@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="dialog.show" max-width="40rem" density="compact" :data-lang="optionsData.pluginLanguage">
+  <v-dialog v-model="dialog.show" max-width="40rem" density="compact">
     <!-- Render card content only if editingWord exists -->
     <v-card v-if="dialog.editingWord" density="compact" style="position: relative;"> <!-- Ensure positioning context -->
       <!-- Left Chevron Button -->
@@ -48,6 +48,11 @@
             min-height="2rem" class="mb-2" :handlers="{ customButton1Click: methods.handleFindImageFromBack }"
             :icons="{ customButton1Icon: '\\F0978', customButton1Color: 'primary' }"
             :break-delimeter="'⏎;→'" :optionsData="optionsData" />
+
+          <v-checkbox v-if="!dialog.editingWord.archived"
+            :model-value="dialog.editingWord.hasTranslation === true"
+            @update:model-value="dialog.editingWord.hasTranslation = $event"
+            :label="util.getText('Translated with Azure')" density="compact" hide-details class="mb-2" />
 
           <!-- Context Play sound context-->
           <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.context" :label="util.getText('Context')"

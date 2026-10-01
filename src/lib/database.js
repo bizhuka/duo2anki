@@ -50,6 +50,7 @@ class DbProxy extends Dexie {
   }
 
   async _set_dafaults(word) { 
+    word.hasTranslation = word.hasTranslation ?? null;
     word.status = word.status || STATUS.LEARNING;
     word.ease_factor = word.ease_factor || ( STARTING_EASE / 100 );
     word.interval = word.interval || 0;
@@ -105,6 +106,18 @@ class DbProxy extends Dexie {
     return wordsToAdd.length; // Return the count of actually added words
   }
 
+  async getCourseIds() {
+    return this.words.orderBy('course_id').uniqueKeys();
+  }
+
+  async getCourseWordCounts(courseIds) {
+    const counts = await Promise.all(courseIds.map(async courseId => [
+      courseId,
+      await this.words.where('course_id').equals(courseId).count(),
+    ]));
+    return Object.fromEntries(counts);
+  }
+
   async select(course_id) {
     const words = await this.words
       .where("course_id")
@@ -132,8 +145,10 @@ class DbProxy extends Dexie {
     return await this.updateWord(item);
   }
 
-  async clearWords() {
-    const wordsToMeta = await this.words.filter(word => word.archived || word.image).toArray();
+  async clearWords(course_id) {
+    if (!course_id) throw new Error('Select a course before deleting words.');
+    const courseWords = this.words.where('course_id').equals(course_id);
+    const wordsToMeta = await courseWords.clone().filter(word => word.archived || word.image).toArray();
     if (wordsToMeta.length > 0) {
       const metaData = wordsToMeta.map(word => ({
         front: word.front,
@@ -143,14 +158,12 @@ class DbProxy extends Dexie {
       }));
       await this.word_meta.bulkPut(metaData);
     }
-    return await this.words.clear();
+    return await courseWords.delete();
   }
 
-  async archiveAllWords(course_id) {
-    const wordsToArchive = await this.words.where({ course_id }).toArray();
-    for (const word of wordsToArchive) {
-      await this.archiveWord(word, true);
-    }
+  async archiveAllWords(course_id, isArchived = true) {
+    if (!course_id) throw new Error('Select a course before archiving words.');
+    return this.words.where('course_id').equals(course_id).modify({ archived: isArchived });
   }
 
   async updateWord(item) {
@@ -175,7 +188,9 @@ class DbProxy extends Dexie {
     let resultCards = [];
     let remainingCount = count;
     const course_id = util.options.current_course_id;
-    const contextFilter = card => card.context && card.context.indexOf('→') > 0 && !card.archived;
+    const contextFilter = card => !card.archived && (course_id === 'kindle'
+      ? [card.context, card.back].every(text => util.unescape_html(util.delete_all_tags(text || '')).trim())
+      : card.context && card.context.indexOf('→') > 0);
 
     // Part 1: New cards (status === LEARNING and next_review is null or past)
     // Sorted by their original creation date to ensure older new cards are shown first.

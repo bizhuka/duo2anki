@@ -1,5 +1,5 @@
 <template>
-  <div :data-lang="optionsData.pluginLanguage">
+  <div>
 
     <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem;">
       <ActionButton icon="mdi-upload"
@@ -38,7 +38,7 @@
               ></v-text-field>
             </v-col>
             <v-col cols="12">
-              <v-tooltip location="top" v-if="appName === 'duo2anki'">
+              <v-tooltip v-if="!isKindle" location="top">
                 <template v-slot:activator="{ props }">
                   <v-checkbox
                     v-bind="props"
@@ -53,7 +53,14 @@
               </v-tooltip>
 
               <v-checkbox
-                v-if="appName === 'duo2anki'"
+                v-model="optionsData.exportWithAzureTranslationsOnly"
+                :label="util.getText('Export only words translated with Azure')"
+                @update:model-value="saveOptions"
+                density="compact"
+                hide-details
+              ></v-checkbox>
+
+              <v-checkbox
                 v-model="optionsData.includeScheduleInformation"
                 :label="util.getText('includeScheduleInformation')"
                 @update:model-value="saveOptions"
@@ -61,7 +68,7 @@
                 hide-details
               ></v-checkbox>
 
-              <template v-if="appName === 'kindle2anki'">
+              <template>
                 <v-checkbox
                   v-model="optionsData.exportWithTranslationsOnly"
                   label="Export with translations only"
@@ -124,25 +131,25 @@ export default {
       type: Function,
       required: true
     },
-    appName: {
-      type: String,
-      default: ''
-    }
   },
   
   data() {
     return {
-      deckName: '',
-      nodeType: '',
       exportingToAnki: false,
     };
   },
   
-  mounted() {
-    this.initializeComponent();
-  },
-
   computed: {
+    isKindle() {
+      return this.optionsData.current_course_id === 'kindle';
+    },
+    deckName() {
+      const course = util.getCurrentCourse();
+      return `duo2anki${course ? `- ${course}` : ''}`;
+    },
+    nodeType() {
+      return `!${this.deckName}`;
+    },
     exportDialogTitle() {
       const wordsToExport = this.getValidWordsForExport();
       return `${ typeof wordsToExport === 'string' ? wordsToExport : `${ util.getText('Words') } - ${wordsToExport.length}`}`;
@@ -154,16 +161,10 @@ export default {
       this.showMessage(message, 'error');
     },
 
-    async initializeComponent() {
-      const course = util.getCurrentCourse();
-      const courseText =  course ? `- ${course}`: '';
-      this.deckName = `${this.appName}${ courseText }`;
-      this.nodeType = `!${this.appName}${ courseText }`;
-    },
-
     get_id_from_name(name) {
       const hash = Array.from(name).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      return hash % 1000000000; // Ensure the ID is within a valid range
+      const namespaceOffset = name === '!duo2anki- Kindle' ? 1000000 : 0;
+      return namespaceOffset + (hash % 1000000000);
     },
 
     getValidWordsForExport() {
@@ -171,9 +172,14 @@ export default {
         return util.getText('No words to process or request count is 0.');
       }
 
-      let words = this.db_words.filter(word => !word.archived);
+      let words = this.db_words.filter(word => !word.archived &&
+        word.course_id === this.optionsData.current_course_id && word.front?.trim());
 
-      if (this.appName === 'kindle2anki') {
+      if (this.optionsData.exportWithAzureTranslationsOnly) {
+        words = words.filter(word => word.hasTranslation === true);
+      }
+
+      if (this.isKindle) {
         if (this.optionsData.exportWithImagesOnly) {
           words = words.filter(word => word.image && word.image.trim() !== '');
         }
@@ -193,23 +199,28 @@ export default {
     },
 
     async triggerExport() { // Changed to async as it calls async operations like ankiPackage.writeToFile
+      if (this.exportingToAnki) return;
       const wordsToExport = this.getValidWordsForExport();
       if (typeof wordsToExport === 'string') {
         this.showMessage(wordsToExport, 'warning');
         return;
       }
       
-      if (!SQL) {
+      if (!window.SQL) {
         this.showMessage('SQL.js not initialized. Please ensure it is loaded.', 'error');
         return;
       }
       this.exportingToAnki = true;
 
-      const modelId = this.get_id_from_name(this.nodeType);
+      const deckName = this.deckName;
+      const nodeType = this.nodeType;
+      const options = { ...this.optionsData };
+      const modelId = this.get_id_from_name(nodeType);
+      let db;
       try {
         const ankiModel = new Model({
           id: modelId,
-          name: this.nodeType,
+          name: nodeType,
           flds: [
             { name: 'Front' },
             { name: 'Back' },
@@ -231,15 +242,15 @@ export default {
           css: `.card { font-family: arial; font-size: 1.5rem; text-align: center; color: black; background-color: white; }`,
         });
 
-        const ankiDeck = new Deck(modelId + 1, this.deckName);
+        const ankiDeck = new Deck(modelId + 1, deckName);
         const ankiPackage = new AnkiPackage();
         ankiPackage.addDeck(ankiDeck);
 
-        const db = new SQL.Database();
+        db = new window.SQL.Database();
         ankiPackage.setSqlJs(db);
 
         for (const item of wordsToExport) { // Use for...of for async iteration
-          const scheduleInfo = this.optionsData.includeScheduleInformation && item.next_review ? {
+          const scheduleInfo = options.includeScheduleInformation && item.next_review ? {
               next_review: item.next_review,
               status: item.status,
               interval: item.interval,
@@ -247,10 +258,10 @@ export default {
           } : null;
 
           const soundUrl = util.get_sound_url(item, util.SOUND_MODE.FRONT_WORD);
-          let soundField = soundUrl; // Default to URL
+          let soundField = soundUrl || '';
           console.log('Sound URL:', soundUrl);
 
-          if (soundUrl && this.optionsData.collection_media) {
+          if (soundUrl && options.collection_media) {
             try {
               const filename = `${item.targetLang}_${item.id}_${ item.front.replace(/[^a-zA-Z0-9-_.]/g, '_') }.mp3`;
               this.showMessage(util.getText('exportingAudioForWord', [item.front]), 'warning');
@@ -269,25 +280,24 @@ export default {
 
           const note = new Note(ankiModel, [
             item.front,
-            item.back,
+            item.back || '',
             soundField,
-            item.image,
-            item.context,
-            (item.transcription || '') + `[sound:${soundField}]`,
+            item.image || '',
+            item.context || '',
+            (item.transcription || '') + (soundField ? `[sound:${soundField}]` : ''),
           ], scheduleInfo);
           ankiDeck.addNote(note);
         }
 
         // Now that all notes and media are added, write the file
-        const course = util.getCurrentCourse();
-        const courseText =  course ? `- ${course}`: '';
-        const fileName = `${this.appName}${courseText}-${ wordsToExport.length } words-${ new Date().toISOString().split('T')[0] }.apkg`;
-        ankiPackage.writeToFile(fileName);
+        const fileName = `${deckName}-${ wordsToExport.length } words-${ new Date().toISOString().split('T')[0] }.apkg`;
+        await ankiPackage.writeToFile(fileName);
         this.showMessage(fileName, 'success');
       } catch (error) {
         console.error('Error exporting to Anki:', error);
         this.showMessage(util.getText('errorExportingToAnki'), 'error');
       } finally {
+        db?.close();
         this.exportingToAnki = false;
       }
     }

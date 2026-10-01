@@ -171,7 +171,7 @@ export default {
 
         const arr = util.delete_all_tags(element.context).split('→');
         const frontContext = arr[0].trim();
-        const backContext = arr[1].trim()
+        const backContext = (arr[1] ?? backWord).trim()
 
         switch(this.consMode){
           case 'byChar':

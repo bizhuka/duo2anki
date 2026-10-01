@@ -6,7 +6,6 @@
     @dragleave.prevent="methods.handleDragLeave"
     class="my-2 text-center"
     :style="dropZoneStyle"
-    :data-lang="optionsData.pluginLanguage"
   >
     <!-- Image Display -->
     <v-img
