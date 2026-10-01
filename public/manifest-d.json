@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "duo2anki",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Anki tool",
   "icons": {
     "128": "icon.png"

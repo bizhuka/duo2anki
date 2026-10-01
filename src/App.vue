@@ -23,7 +23,7 @@
           <v-card density="compact" style="height: 100%;">
             <v-tabs v-model="activeTab" bg-color="primary" density="compact">              
               <v-tab value="words" density="compact" prepend-icon="mdi-magnify" style="text-transform: none;">{{ util.getText('Words') }}</v-tab>
-              <v-tab value="kindle" density="compact" prepend-icon="mdi-book-open-variant" style="text-transform: none;">Kindle Import</v-tab>
+              <v-tab value="reader" density="compact" prepend-icon="mdi-book-open-variant" style="text-transform: none;">{{ util.getText('Reader Import') }}</v-tab>
               <v-tab value="games" density="compact" prepend-icon="mdi-gamepad-variant" style="text-transform: none;">{{ util.getText('games') }}</v-tab>
               <v-tab value="anki" density="compact" prepend-icon="mdi-cards" style="text-transform: none;">{{ util.getText('Anki') }}</v-tab>
               <v-tooltip location="bottom" :open-delay="1000">
@@ -41,8 +41,7 @@
                   <WordsTab ref="wordsTab" :db_words="db_words" :optionsData="optionsData" :saveOptions="saveOptions"
                     :dbProxy="dbProxy" :showMessage="showMessage" @refresh-words="loadWordsFromDb" />
                 </v-window-item>
-                <!-- Kindle Import -->
-                <v-window-item value="kindle">
+                <v-window-item value="reader">
                   <KindleImportTab
                     :optionsData="optionsData"
                     :dbProxy="dbProxy"
@@ -103,8 +102,8 @@ export default {
   },
 
   computed: {
-    isKindle() {
-      return this.optionsData.current_course_id === 'kindle';
+    isReader() {
+      return util.isReaderCourse(this.optionsData.current_course_id);
     },
     currentCourse() {
       return util.getCurrentCourse();
@@ -117,7 +116,7 @@ export default {
   watch: {
     async 'optionsData.current_course_id'() {
       this.db_words = [];
-      if (!this.isKindle && this.activeTab === 'kindle') this.activeTab = 'words';
+      if (!this.isReader && this.activeTab === 'reader') this.activeTab = 'words';
       await this.saveOptions();
       if (this.dbProxy) await this.loadWordsFromDb();
     },

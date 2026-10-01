@@ -188,7 +188,7 @@ class DbProxy extends Dexie {
     let resultCards = [];
     let remainingCount = count;
     const course_id = util.options.current_course_id;
-    const contextFilter = card => !card.archived && (course_id === 'kindle'
+    const contextFilter = card => !card.archived && (util.isReaderCourse(course_id)
       ? [card.context, card.back].every(text => util.unescape_html(util.delete_all_tags(text || '')).trim())
       : card.context && card.context.indexOf('→') > 0);
 

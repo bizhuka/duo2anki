@@ -38,7 +38,7 @@
               ></v-text-field>
             </v-col>
             <v-col cols="12">
-              <v-tooltip v-if="!isKindle" location="top">
+              <v-tooltip v-if="!isReader" location="top">
                 <template v-slot:activator="{ props }">
                   <v-checkbox
                     v-bind="props"
@@ -140,8 +140,8 @@ export default {
   },
   
   computed: {
-    isKindle() {
-      return this.optionsData.current_course_id === 'kindle';
+    isReader() {
+      return util.isReaderCourse(this.optionsData.current_course_id);
     },
     deckName() {
       const course = util.getCurrentCourse();
@@ -163,7 +163,8 @@ export default {
 
     get_id_from_name(name) {
       const hash = Array.from(name).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const namespaceOffset = name === '!duo2anki- Kindle' ? 1000000 : 0;
+      const namespaceOffset = Object.values(util.readerCourses)
+        .find(reader => name === `!duo2anki- ${reader.name}`)?.ankiIdOffset || 0;
       return namespaceOffset + (hash % 1000000000);
     },
 
@@ -179,7 +180,7 @@ export default {
         words = words.filter(word => word.hasTranslation === true);
       }
 
-      if (this.isKindle) {
+      if (this.isReader) {
         if (this.optionsData.exportWithImagesOnly) {
           words = words.filter(word => word.image && word.image.trim() !== '');
         }

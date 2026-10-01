@@ -87,17 +87,6 @@ export default {
         event.preventDefault();
         isDragOverValid.value = false; // Reset highlight state
 
-        // Try to get URL first (from dragged link or image)
-        const urlData = event.dataTransfer.getData('text/uri-list');
-
-        // If a valid URL is found
-        if (util.isValidImageSource(urlData)) {
-          emit('update:image', urlData);
-          emit('save');
-          return; // Exit after handling URL
-        }
-
-        // If no valid URL, try files
         if (event.dataTransfer.files.length > 0) {
           const file = event.dataTransfer.files[0];
           if (file.type.startsWith('image/')) {
@@ -111,6 +100,19 @@ export default {
             reader.readAsDataURL(file);
             return; // Exit early as FileReader is async
           }
+        }
+
+        const html = event.dataTransfer.getData('text/html');
+        const imageSource = html
+          ? new DOMParser().parseFromString(html, 'text/html').querySelector('img')?.getAttribute('src')
+          : null;
+        const urlSources = (event.dataTransfer.getData('text/uri-list') ||
+          event.dataTransfer.getData('text/plain')).split(/\r?\n/)
+          .map(source => source.trim()).filter(source => source && !source.startsWith('#'));
+        const source = [imageSource, ...urlSources].find(candidate => util.isValidImageSource(candidate));
+        if (source) {
+          emit('update:image', source);
+          emit('save');
         }
       },
 

@@ -3,6 +3,13 @@
 ## Overview
 This project is a **Chrome extension** that extracts vocabulary from Duolingo and exports it to **Anki** via AnkiConnect. The extension consists of a **side panel** providing the user interface and features.
 
+## Reader Imports
+The Reader Import tab accepts both databases in the same drop area and detects their format automatically:
+- Kindle: `Kindle/system/vocabulary/vocab.db`
+- KOReader: `Storage/koreader/settings/vocabulary_builder.sqlite3`
+
+Each reader has a separate course. Imports populate Front, Context (with the looked-up form in bold), and Hint/Transcription (book title). Reimporting the same file skips duplicate contexts. KOReader databases have no language metadata; select the source language in the translation or context dialog.
+
 ## Tech Stack 🚀
 - 🖥️ **Framework:** Vue 3 (`src/App.vue`, `src/sidepanel.js`)
 - 🎨 **UI Library:** Vuetify (`src/plugins/vuetify.js`)

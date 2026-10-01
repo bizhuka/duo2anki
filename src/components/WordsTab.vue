@@ -153,7 +153,7 @@ export default {
       return this.courseWords.length > 0 && this.courseWords.every(word => word.archived);
     },
     isDuolingo() {
-      return this.optionsData.current_course_id !== 'kindle';
+      return !util.isReaderCourse(this.optionsData.current_course_id);
     },
     filteredWords() {
       if (!this.search) return this.db_words;

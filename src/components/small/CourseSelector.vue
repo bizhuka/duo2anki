@@ -49,8 +49,8 @@ const flagCountries = {
 
 const courseItems = computed(() => {
   return props.courseIds.map(courseId => {
-    if (courseId === 'kindle') {
-      return { value: courseId, title: 'Kindle words', icon: 'mdi-book-open-variant' };
+    if (util.isReaderCourse(courseId)) {
+      return { value: courseId, title: `${util.readerCourses[courseId].name} words`, icon: 'mdi-book-open-variant' };
     }
     const { lang_id } = util.get_course_info(courseId);
     return {

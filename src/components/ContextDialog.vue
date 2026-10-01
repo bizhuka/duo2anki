@@ -1,9 +1,11 @@
 <template>
-    <v-dialog v-model="dialog.show" max-width="35rem">
+    <v-dialog v-model="dialog.show" max-width="35rem" scrollable>
         <v-card>
             <v-card-title class="text-h5">{{ dialog.title }}</v-card-title>
             <v-card-text>
-                <v-textarea v-model="optionsData.prompt_prefix" :label="util.getText('Context')" rows="4" auto-grow clearable
+                <TranslationLanguages v-model:from="dialog.from" v-model:to="optionsData.translation_to"
+                    :disabled="dialog.loadingWords" @update:to="saveOptions" class="mb-4" />
+                <v-textarea v-model="optionsData.prompt_prefix" :label="util.getText('Context')" rows="4" max-rows="6" auto-grow clearable
                     clear-icon="mdi-replay" @click:clear="fillDefaultPrompt" />
                 <v-radio-group v-model="optionsData.ai_model" inline prepend-icon="mdi-robot-happy-outline">
                     <v-radio :label="util.getText('Chat GPT')" :value="util.AI_MODEL.CHATGPT"></v-radio>
@@ -21,7 +23,7 @@
                     {{ util.getText('Cancel') }}
                 </v-btn>
                 <v-btn color="success" variant="text" @click="confirm" style="text-transform: none;"
-                    :loading="dialog.loadingWords"  :disabled="!optionsData.prompt_prefix || !optionsData.request_count">
+                    :loading="dialog.loadingWords" :disabled="!canConfirm || dialog.loadingWords">
                     {{ util.getText('Ok') }}
                 </v-btn>
             </v-card-actions>
@@ -30,10 +32,12 @@
 </template>
 
 <script>
-import { reactive, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { util } from '../lib/util.js'; // Import util at top level
 import { processContexts } from '../lib/contextProcessor.js';
 import BatchRequestControls from './small/BatchRequestControls.vue';
+import TranslationLanguages from './small/TranslationLanguages.vue';
+import { inferTranslationSource, translationLanguage, translationLanguageName } from '../lib/translationLanguages.js';
 
 export default {
     props: {
@@ -52,17 +56,22 @@ export default {
     },
     components: {
         BatchRequestControls,
+        TranslationLanguages,
     },
     setup(props, { emit }) {
         const dialog = reactive({
             show: false,
             title: util.getText('Fill empty contexts'),
-            prompt_prefix: '',
+            from: '',
             action: null, // Callback for external action if needed
             resolve: null,
             reject: null,
             loadingWords: false
         });
+
+        const canConfirm = computed(() => !!translationLanguageName(dialog.from) &&
+            !!translationLanguageName(props.optionsData.translation_to) &&
+            !!props.optionsData.prompt_prefix?.trim() && !!props.optionsData.request_count);
 
         watch(() => dialog.show, (newValue) => {
             if (!newValue && dialog.resolve) {
@@ -72,7 +81,13 @@ export default {
         });
 
         function fillDefaultPrompt() {
-            props.optionsData.prompt_prefix = util.getText('context_defaultPrompt')
+            props.optionsData.prompt_prefix = util.getText('context_defaultPrompt');
+        }
+
+        function ensurePromptMarkers() {
+            const prompt = props.optionsData.prompt_prefix || '';
+            if (!prompt.trim() || !prompt.includes('{TO_LANGUAGE}') || !prompt.includes('{FROM_LANGUAGE}'))
+                fillDefaultPrompt();
         }
 
         // Method to show the dialog
@@ -80,9 +95,9 @@ export default {
             if (typeof options.action !== 'function')
                 throw new Error(util.getText('Pass action!'))
 
-            // Access props directly in setup
-            if (!props.optionsData.prompt_prefix)
-                fillDefaultPrompt();
+            ensurePromptMarkers();
+            dialog.from = inferTranslationSource(props.optionsData.current_course_id, props.db_words);
+            props.optionsData.translation_to = translationLanguage(props.optionsData.translation_to) || 'en';
 
             dialog.action = options.action;
             dialog.show = true;
@@ -94,17 +109,21 @@ export default {
         }
 
         async function confirm() {
-            const prompt_prefix = props.optionsData.prompt_prefix.trim();
-            if (!prompt_prefix || !props.optionsData.request_count) return;
+            if (dialog.loadingWords) return;
+            ensurePromptMarkers();
+            if (!canConfirm.value) return;
+            const prompt_prefix = props.optionsData.prompt_prefix.trim()
+                .replaceAll('{FROM_LANGUAGE}', translationLanguageName(dialog.from))
+                .replaceAll('{TO_LANGUAGE}', translationLanguageName(props.optionsData.translation_to));
             dialog.loadingWords = true;
 
-            props.saveOptions();
             const filteredWords = props.db_words.filter(word => !word.context || 
               // TODO  
               word.context === "<p><br></p>"
             );
             try {
-                await processContexts(filteredWords, props.optionsData, dialog.action);                
+                await props.saveOptions();
+                await processContexts(filteredWords, { ...props.optionsData, prompt_prefix }, dialog.action);
                 dialog.resolve();
             } catch (error) {
                 dialog.reject(error);
@@ -126,6 +145,7 @@ export default {
             confirm,
             cancel,
             fillDefaultPrompt,
+            canConfirm,
             util
         };
     },

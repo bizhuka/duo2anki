@@ -3,18 +3,8 @@
         <v-card>
             <v-card-title>{{ util.getText('Translate words') }}</v-card-title>
             <v-card-text>
-                <v-row>
-                    <v-col cols="12" sm="6">
-                        <v-select v-model="translation.from" :items="translationLanguages" item-title="title"
-                            item-value="value" :label="util.getText('Source language')" density="compact"
-                            :disabled="translation.loading" hide-details />
-                    </v-col>
-                    <v-col cols="12" sm="6">
-                        <v-select v-model="translation.to" :items="translationLanguages" item-title="title"
-                            item-value="value" :label="util.getText('Target language')" density="compact"
-                            :disabled="translation.loading" hide-details @update:model-value="saveTranslationTarget" />
-                    </v-col>
-                </v-row>
+                <TranslationLanguages v-model:from="translation.from" v-model:to="translation.to"
+                    :disabled="translation.loading" @update:to="saveTranslationTarget" />
                 <BatchRequestControls class="mt-4" v-model:words-per-request="optionsData.words_per_request"
                     v-model:request-count="optionsData.request_count" :disabled="translation.loading" />
                 <v-checkbox v-model="optionsData.add_2_back" :true-value="false" :false-value="true"
@@ -42,9 +32,10 @@
 <script setup>
 import { computed, reactive, toRaw } from 'vue';
 import BatchRequestControls from './small/BatchRequestControls.vue';
+import TranslationLanguages from './small/TranslationLanguages.vue';
 import { util } from '../lib/util.js';
-import { normalizeAzureLanguage, translateWithAzure } from '../lib/ai.js';
-import { duolingoCourses } from '../lib/i18n/translation.js';
+import { translateWithAzure } from '../lib/ai.js';
+import { translationLanguage, translationLanguageName, wordLanguage, inferTranslationSource } from '../lib/translationLanguages.js';
 
 const props = defineProps({
     optionsData: { type: Object, required: true },
@@ -65,37 +56,13 @@ const translation = reactive({
     total: 0,
 });
 
-function translationLanguage(language) {
-    if (!language) return '';
-    const code = normalizeAzureLanguage(language).split('-')[0];
-    return ({ ua: 'uk', no: 'nb' })[code] || code;
-}
-
-const translationLanguages = duolingoCourses.map(course => ({
-    title: course.language,
-    value: translationLanguage(course.code),
-}));
-
-function mostCommonLanguage(words, field) {
-    const counts = new Map();
-    for (const word of words) {
-        const language = translationLanguage(word[field]);
-        if (language) counts.set(language, (counts.get(language) || 0) + 1);
-    }
-    return [...counts].sort((first, second) => second[1] - first[1])[0]?.[0] || '';
-}
-
-function wordLanguage(word) {
-    return translationLanguage(word.targetLang || util.get_course_info(word.course_id).targetLang);
-}
-
 const eligibleTranslationWords = computed(() => translation.words.filter(word =>
     word.course_id === translation.courseId && !word.archived && word.front?.trim() &&
     word.hasTranslation !== true &&
     (!wordLanguage(word) || wordLanguage(word) === translation.from)));
 const translationWordCount = computed(() => Math.min(eligibleTranslationWords.value.length,
     props.optionsData.words_per_request * props.optionsData.request_count));
-const canTranslate = computed(() => !!translation.from && !!translation.to &&
+const canTranslate = computed(() => !!translationLanguageName(translation.from) && !!translationLanguageName(translation.to) &&
     translation.from !== translation.to && translationWordCount.value > 0);
 
 async function saveTranslationTarget() {
@@ -113,13 +80,9 @@ async function openTranslationDialog() {
     if (!courseId) return;
     try {
         const words = await toRaw(props.dbProxy).select(courseId);
-        const activeWords = words.filter(word => !word.archived && word.front?.trim());
-        const missingTranslations = activeWords.filter(word => word.hasTranslation !== true);
-        const course = util.get_course_info(courseId);
         translation.courseId = courseId;
         translation.words = words;
-        translation.from = translationLanguage(course.targetLang) ||
-            mostCommonLanguage(missingTranslations, 'targetLang') || mostCommonLanguage(activeWords, 'targetLang');
+        translation.from = inferTranslationSource(courseId, words);
         translation.to = translationLanguage(props.optionsData.translation_to) || 'en';
         translation.completed = 0;
         translation.total = 0;
@@ -160,6 +123,7 @@ async function translateWords() {
                 updated += await database.words.update(word.id, {
                     back: util.mergeTranslationBack(current.back, translated[index], addToBack),
                     hasTranslation: true,
+                    targetLang: current.targetLang?.trim() ? current.targetLang : from,
                 });
             }
             translation.completed += batch.length;

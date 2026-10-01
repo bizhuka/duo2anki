@@ -2,11 +2,14 @@
     <div class="kindle-import">
         <v-card class="pa-4" variant="flat">
             <FileDropZone ref="kindleDropZoneRef" icon="mdi-database-import"
-                idle-label="Drop Kindle vocabulary DB 'vocab.db' here or click to select"
+                idle-label="Drop Kindle vocab.db or KOReader vocabulary_builder.sqlite3 here or click to select"
                 accept=".db,.sqlite,.sqlite3,.sqlite-db" :processing="kindleIsProcessing"
                 @file-selected="handleKindleFileSelected" />
-            <v-card-subtitle class="text-center pt-2">
+            <v-card-subtitle class="text-center pt-2" style="white-space: normal; overflow-wrap: anywhere;">
                 Kindle saves the vocabulary builder database at <code>Kindle/system/vocabulary/vocab.db</code> when the device is mounted.
+            </v-card-subtitle>
+            <v-card-subtitle class="text-center pt-2" style="white-space: normal; overflow-wrap: anywhere;">
+                Find the KOReader vocabulary database at <code>Storage/koreader/settings/vocabulary_builder.sqlite3</code> when the device is mounted.
             </v-card-subtitle>
 
             <div v-show="false">
@@ -63,6 +66,33 @@ const KINDLE_SELECT_QUERY = `
   JOIN book_info b ON b.id = l.book_key
   ORDER BY l.timestamp DESC;
 `;
+
+const KOREADER_SELECT_QUERY = `
+    SELECT
+        v.word AS stem,
+        v.highlight AS word_original,
+        v.prev_context,
+        v.next_context,
+        v.create_time AS date,
+        t.name AS book_title
+    FROM vocabulary v
+    LEFT JOIN title t ON t.id = v.title_id
+    ORDER BY v.create_time DESC;
+`;
+
+const READER_FORMATS = [
+        { courseId: KINDLE_COURSE, name: 'Kindle', tables: ['lookups', 'words', 'book_info'], query: KINDLE_SELECT_QUERY,
+                context: (row, columns) => normalizeDefinition(row[columns.context]?.trim() || '')
+                        .replace(row[columns.word_original]?.trim() || '', `<strong>${row[columns.word_original]?.trim() || ''}</strong>`) },
+        { courseId: 'koreader', name: 'KOReader', tables: ['vocabulary', 'title'], query: KOREADER_SELECT_QUERY,
+                context: (row, columns) => {
+                        const escapeText = text => normalizeDefinition(text || '').replaceAll('&', '&amp;')
+                                .replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+                        const highlight = row[columns.word_original]?.trim() || row[columns.stem]?.trim() || '';
+                        return [escapeText(row[columns.prev_context]), `<strong>${escapeText(highlight)}</strong>`,
+                                escapeText(row[columns.next_context])].filter(Boolean).join(' ');
+                } },
+];
 
 function asUint8Array(payload) {
     if (payload instanceof Uint8Array) {
@@ -229,21 +259,23 @@ async function importKindleLookups(buffer) {
 
     const kindleBytes = asUint8Array(buffer);
     if (!kindleBytes) {
-        throw new Error('Kindle database payload is invalid.');
+        throw new Error('Reader database payload is invalid.');
     }
 
     let sqliteDb;
     try {
         sqliteDb = new sqlModule.Database(kindleBytes);
     } catch (error) {
-        throw new Error('Unable to open Kindle database file.');
+        throw new Error('Unable to open reader database file.');
     }
 
     let execResult;
+    let format;
     try {
-        execResult = sqliteDb.exec(KINDLE_SELECT_QUERY);
-    } catch (error) {
-        throw new Error('Failed to read Kindle database content.');
+        const tables = new Set(sqliteDb.exec("SELECT name FROM sqlite_master WHERE type = 'table'")[0]?.values.map(row => row[0].toLowerCase()) || []);
+        format = READER_FORMATS.find(reader => reader.tables.every(table => tables.has(table)));
+        if (!format) throw new Error('Please select a Kindle or KOReader vocabulary database.');
+        execResult = sqliteDb.exec(format.query);
     } finally {
         sqliteDb.close();
     }
@@ -253,7 +285,7 @@ async function importKindleLookups(buffer) {
     const rows = queryResult ? queryResult.values : [];
 
     if (!rows.length) {
-        return { total: 0, added: 0, skipped: 0 };
+        return { reader: format.name, total: 0, added: 0, skipped: 0, updated: 0 };
     }
 
     const columnIndex = columns.reduce((acc, columnName, index) => {
@@ -261,11 +293,11 @@ async function importKindleLookups(buffer) {
         return acc;
     }, {});
 
-    const existingWords = await props.dbProxy.words.where({ course_id: KINDLE_COURSE }).toArray();
+    const existingWords = await props.dbProxy.words.where({ course_id: format.courseId }).toArray();
     const wordEntries = new Map();
 
     for (const word of existingWords) {
-        const key = `${KINDLE_COURSE}_${word.front}`;
+        const key = `${format.courseId}_${word.front}`;
         wordEntries.set(key, {
             source: 'db',
             updated: false,
@@ -273,7 +305,7 @@ async function importKindleLookups(buffer) {
         });
     }
 
-    await util.save_options({ current_course_id: KINDLE_COURSE });
+    await util.save_options({ current_course_id: format.courseId });
 
     let processedRows = 0;
 
@@ -282,16 +314,14 @@ async function importKindleLookups(buffer) {
         if (!front) {
             continue;
         }
-        const word_original = row[columnIndex.word_original]?.trim() || '';
-        const context = normalizeDefinition( (row[columnIndex.context]?.trim() || '') )
-                           .replace(word_original, `<strong>${word_original}</strong>`);
+        const context = format.context(row, columnIndex);
         const transcriptionValue = row[columnIndex.book_title]?.trim() || '';
 
         if (!context) {
             continue;
         }
 
-        const key = `${KINDLE_COURSE}_${front}`;
+        const key = `${format.courseId}_${front}`;
         const existingEntry = wordEntries.get(key);
 
         if (existingEntry) {
@@ -318,7 +348,7 @@ async function importKindleLookups(buffer) {
             source: 'new',
             updated: false,
             record: {
-                course_id: KINDLE_COURSE,
+                course_id: format.courseId,
                 front,
                 context,
                 date: parseKindleTimestamp(row[columnIndex.date]),
@@ -359,6 +389,7 @@ async function importKindleLookups(buffer) {
     const updated = wordsToUpdate.length;
     const skipped = Math.max(0, total - processedRows);
     return {
+        reader: format.name,
         total,
         added,
         skipped,
@@ -373,7 +404,7 @@ function handleKindleFileSelected(file) {
     }
 
     if (kindleIsProcessing.value) {
-        props.showMessage('A Kindle import is already in progress.', 'info');
+        props.showMessage('A reader import is already in progress.', 'info');
         kindleDropZoneRef.value?.reset();
         return;
     }
@@ -392,9 +423,9 @@ async function processKindleFile(file) {
         const buffer = await file.arrayBuffer();
         const result = await importKindleLookups(buffer);
 
-        const { total, added, skipped, updated } = result;
+        const { reader, total, added, skipped, updated } = result;
         if (!total) {
-            props.showMessage('No Kindle lookups found in the selected file.', 'info');
+            props.showMessage(`No ${reader} lookups found in the selected file.`, 'info');
             return;
         }
 
@@ -407,8 +438,8 @@ async function processKindleFile(file) {
         }
 
         const summary = summaryParts.length
-            ? `Processed ${total} Kindle lookups: ${summaryParts.join(', ')}.`
-            : 'No new Kindle lookups were added.';
+            ? `Processed ${total} ${reader} lookups: ${summaryParts.join(', ')}.`
+            : `No new ${reader} lookups were added.`;
 
         props.showMessage(summary, (added || updated) ? 'success' : 'info');
 
@@ -422,8 +453,8 @@ async function processKindleFile(file) {
 
         emit('refresh-words');
     } catch (error) {
-        console.error('Kindle import failed:', error);
-        const message = error?.message || 'Failed to import Kindle database.';
+        console.error('Reader import failed:', error);
+        const message = error?.message || 'Failed to import reader database.';
         props.showMessage(message, 'error');
     } finally {
         kindleIsProcessing.value = false;

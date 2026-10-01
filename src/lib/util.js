@@ -32,6 +32,15 @@ export const util = {
 
   audioPlayer: null,
 
+  readerCourses: {
+    kindle: { name: 'Kindle', ankiIdOffset: 1000000 },
+    koreader: { name: 'KOReader', ankiIdOffset: 2000000 },
+  },
+
+  isReaderCourse(courseId) {
+    return Object.hasOwn(this.readerCourses, courseId);
+  },
+
   CONFIRM_RESULT: {
     YES: "yes",
     NO: "no",
@@ -61,7 +70,7 @@ export const util = {
 
   getCurrentCourse() {
     const course_id = this.options.current_course_id;
-    if (course_id === 'kindle') return 'Kindle';
+    if (this.isReaderCourse(course_id)) return this.readerCourses[course_id].name;
     return course_id ? getDuolingoCourseLanguage(this.get_course_info(course_id).lang_id) || course_id : '';
   },
 
@@ -194,7 +203,7 @@ export const util = {
   },
 
   get_course_info: function (course_id) {
-    if (!course_id || course_id === 'kindle') return {};
+    if (!course_id || this.isReaderCourse(course_id)) return {};
     const delimiter = course_id.includes("-") ? "-" : "_";
     const [targetLang, sourceLang] = course_id.split(delimiter);
     const lang_id = targetLang.split("_")[0]?.toUpperCase();
@@ -267,8 +276,13 @@ export const util = {
   // Validate image source URL or data URI
   isValidImageSource(src) {
     if (!src || typeof src !== 'string') return false;
-    // Basic check for common image extensions or base64 data URI
-    return /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(src) || src.startsWith('data:image/');
+    if (src.startsWith('data:image/')) return true;
+    try {
+      const url = new URL(src);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(src);
+    }
   },
 
   // Helper to open/update the image search tab
