@@ -123,6 +123,14 @@ export default {
   },
 
   methods: {
+    async capture_image_from_search(tabId) {
+      const editDialog = this.$refs.wordsTab?.$refs?.editDialog;
+      if (!editDialog?.dialog.show) return false;
+      util.options.imageSearchTabId = tabId;
+      await this.saveOptions();
+      return await editDialog.methods.captureImageFromSearchTab(tabId);
+    },
+
     add_word_from_context(word) {
       this.activeTab = 'words'; // Switch to the 'words' tab      
       // Ensure the tab is rendered before calling the method

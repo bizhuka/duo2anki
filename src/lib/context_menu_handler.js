@@ -25,7 +25,7 @@ async function create_or_update_context_menu() {
         chrome.contextMenus.remove(IMAGE_CONTEXT_MENU_ID);
     } else {
 
-        const title = `+ Image for "${currentEditingWordFront}"`;
+        const title = util.getText('image_contextMenu', [currentEditingWordFront]);
 
         chrome.contextMenus.create({
             id: IMAGE_CONTEXT_MENU_ID,

@@ -1,6 +1,28 @@
 import { util } from './util.js'; // Import util for open_side_panel
+import { googleImageSearchQuery } from './imageSearch.js';
 
 let sidePanelPort = null; // Holds the connection port to the side panel if open
+let pendingImageSearchTabId = null;
+
+function sendImageSearchCapture(tabId) {
+    chrome.runtime.sendMessage({
+        foreground: true,
+        action: 'capture_image_from_search',
+        action_params: [tabId],
+    }).catch(() => {});
+}
+
+function requestImageSearchCapture(tab) {
+    const query = googleImageSearchQuery(tab?.url);
+    if (!Number.isInteger(tab?.id) || !query) return false;
+    if (sidePanelPort) {
+        sendImageSearchCapture(tab.id);
+    } else {
+        pendingImageSearchTabId = tab.id;
+        util.open_side_panel({ active: true, currentWindow: true });
+    }
+    return true;
+}
 
 export function isSidePanelOpen() {
     return !!sidePanelPort;
@@ -10,6 +32,10 @@ export function isSidePanelOpen() {
 chrome.runtime.onConnect.addListener((port) => {
     if (port.name === 'sidepanel') {
         sidePanelPort = port;
+        if (pendingImageSearchTabId !== null) {
+            sendImageSearchCapture(pendingImageSearchTabId);
+            pendingImageSearchTabId = null;
+        }
 
         // Listener for when the side panel closes
         port.onDisconnect.addListener(() => {
@@ -41,11 +67,13 @@ function toggleSidePanel() {
 // Listener for keyboard shortcuts
 chrome.commands.onCommand.addListener((command) => {
     if (command === 'app_side_panel') {
-        toggleSidePanel();
+        chrome.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+            if (!requestImageSearchCapture(tabs[0])) toggleSidePanel();
+        }).catch(() => {});
     }
 });
 
 // Listener for the extension icon click
-chrome.action.onClicked.addListener(() => {
-    toggleSidePanel();
+chrome.action.onClicked.addListener(tab => {
+    if (!requestImageSearchCapture(tab)) toggleSidePanel();
 });

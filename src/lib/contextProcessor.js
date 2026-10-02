@@ -134,6 +134,9 @@ function _update_context(results, wordsToProcess, add_2_back) {
         if (word) {
             word.context = result.context;
             word.back = util.mergeTranslationBack(word.back, result.back, add_2_back);
+            if (util.unescape_html(util.delete_all_tags(result.back || '')).trim()) {
+                word.hasTranslation = true;
+            }
         }
     }
     return wordsToProcess;

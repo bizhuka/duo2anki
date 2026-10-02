@@ -10,6 +10,11 @@ The Reader Import tab accepts both databases in the same drop area and detects t
 
 Each reader has a separate course. Imports populate Front, Context (with the looked-up form in bold), and Hint/Transcription (book title). Reimporting the same file skips duplicate contexts. KOReader databases have no language metadata; select the source language in the translation or context dialog.
 
+## Google Images Autofill
+Open a word's image search, then invoke the extension's toolbar button or Alt+A while the Google Images tab is active. This grants temporary access through `activeTab`, without adding Google host permissions. With the edit dialog open, the first loaded result fills and saves an empty image field, including during subsequent same-origin searches from word navigation. Existing images are never overwritten.
+
+The current base64 image source is retained when available. Canvas conversion is attempted for remote thumbnails; if cross-origin restrictions prevent conversion, the image URL is saved instead. After closing the search tab or leaving its origin, invoke the extension again on Google Images to grant access.
+
 ## Tech Stack 🚀
 - 🖥️ **Framework:** Vue 3 (`src/App.vue`, `src/sidepanel.js`)
 - 🎨 **UI Library:** Vuetify (`src/plugins/vuetify.js`)

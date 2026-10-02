@@ -1,10 +1,16 @@
 <template>
   <div
+    @click="methods.findImage"
+    @keydown.enter.prevent="methods.findImage"
+    @keydown.space.prevent="methods.findImage"
     @dragover.prevent="methods.handleDragOver"
     @drop.prevent="methods.handleDrop"
     @dragenter.prevent="methods.handleDragEnter"
     @dragleave.prevent="methods.handleDragLeave"
     class="my-2 text-center"
+    :role="!image ? 'button' : undefined"
+    :tabindex="!image ? 0 : undefined"
+    :aria-label="!image ? util.getText('Find Image (F4)') : undefined"
     :style="dropZoneStyle"
   >
     <!-- Image Display -->
@@ -17,7 +23,9 @@
       style="border-radius: 4px; display: block; object-fit: contain;"
     ></v-img>
     <div v-else style="text-align: center; color: #616161;"> <!-- Added text color -->
-      {{ util.getText('Drop image here (URL or file)') }}
+      <div>{{ util.getText('Drop image here (URL or file)') }}</div>
+      <div class="text-body-2 mt-2">{{ util.getText('image_emptyHint') }}</div>
+      <div class="text-body-2 mt-2" style="white-space: pre-line;">{{ util.getText('image_autoFillHint') }}</div>
     </div>
   </div>
 </template>
@@ -39,7 +47,7 @@ export default {
     }
   },
   
-  emits: ['update:image', 'save'],
+  emits: ['update:image', 'save', 'find-image'],
 
   setup(props, { emit }) {
     const theme = useTheme(); // Use theme
@@ -79,6 +87,10 @@ export default {
     });
 
     const methods = {
+      findImage() {
+        if (!props.image) emit('find-image');
+      },
+
       handleDragOver(event) {
         event.preventDefault(); // Necessary to allow dropping
       },

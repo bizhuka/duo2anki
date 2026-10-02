@@ -32,10 +32,12 @@
             </template>
             <!-- Search for image button -->
             <template v-slot:append v-if="!dialog.editingWord.archived">
-              <v-tooltip location="top" :text="util.getText('Find Image (F4)')" :open-delay="1000">
+              <v-tooltip location="top" max-width="280" :open-delay="1000">
                 <template v-slot:activator="{ props }">
                   <v-icon v-bind="props" color="primary" @click="methods.findImageFromFront">mdi-image-search</v-icon>
                 </template>
+                <div>{{ util.getText('Find Image (F4)') }}</div>
+                <div style="white-space: pre-line;">{{ util.getText('image_autoFillHint') }}</div>
               </v-tooltip>
             </template>
           </v-text-field>
@@ -66,6 +68,7 @@
             :image="dialog.editingWord.image"
             @update:image="newImage => { dialog.editingWord.image = newImage }"
             @save="methods.saveEdit"
+            @find-image="methods.findImageFromFront"
             :optionsData="optionsData"
           />
         </v-col>
@@ -89,10 +92,11 @@
 </template>
 
 <script>
-import { reactive, ref, watch, nextTick, computed } from 'vue';
+import { reactive, ref, watch, nextTick, computed, onBeforeUnmount } from 'vue';
 import { util } from '@/lib/util';
 import { ENABLE_DEBUG_LOGGING } from '@/lib/ai.js';
 import ReplaySoundButton from '@/games/components/ReplaySoundButton.vue';
+import { googleImageSearchQuery, readGoogleSearchImage } from '@/lib/imageSearch.js';
 
 export default {
   components: { ReplaySoundButton },
@@ -122,6 +126,17 @@ export default {
       showRichText: true, // Control visibility of RichTextEditors
     });
     const saveDialog = ref(null); // Reference to the ConfirmDialog component
+    let imageSearchQuery = '';
+    let imageSearchVersion = 0;
+    const onImageTabUpdated = (tabId, changeInfo) => {
+      if (tabId === util.options.imageSearchTabId && changeInfo.status === 'complete') {
+        methods.captureImageFromSearchTab(tabId);
+      }
+    };
+    onBeforeUnmount(() => {
+      imageSearchVersion += 1;
+      chrome.tabs.onUpdated.removeListener(onImageTabUpdated);
+    });
 
     const handleKeydown = async (event) => {
       if (!dialog.show) return  // Only act if dialog is open
@@ -154,8 +169,11 @@ export default {
     watch(() => dialog.show, (isVisible) => {
       if (isVisible) {
         window.addEventListener('keydown', handleKeydown);
+        chrome.tabs.onUpdated.addListener(onImageTabUpdated);
       } else {
         window.removeEventListener('keydown', handleKeydown);
+        chrome.tabs.onUpdated.removeListener(onImageTabUpdated);
+        imageSearchVersion += 1;
       }
       // Update storage when dialog visibility changes
       updateEditingWordStorage();
@@ -267,6 +285,8 @@ export default {
       },
 
       async set_word(setWord, setFocus) {
+        imageSearchVersion += 1;
+        imageSearchQuery = '';
         // Store the new word for comparison
         dialog.prevWord = setWord;
 
@@ -304,6 +324,44 @@ export default {
             }
           } catch (error) {
           }
+        }
+      },
+
+      async captureImageFromSearchTab(tabId) {
+        const word = dialog.editingWord;
+        const version = imageSearchVersion;
+        const query = imageSearchQuery || util.delete_all_tags(word?.front).trim();
+        if (!dialog.show || !word || word.archived || word.image || !query ||
+            !Number.isInteger(tabId) || tabId !== util.options.imageSearchTabId) {
+          return false;
+        }
+        try {
+          const tab = await chrome.tabs.get(tabId);
+          const actualQuery = googleImageSearchQuery(tab.url);
+          if (!tab.active || tab.status !== 'complete' || actualQuery !== query) {
+            return false;
+          }
+          const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: readGoogleSearchImage,
+            args: [query],
+          });
+          const image = results?.[0]?.result;
+          if (!dialog.show || dialog.editingWord !== word || imageSearchVersion !== version ||
+              word.image || word.archived || tabId !== util.options.imageSearchTabId ||
+              !util.isValidImageSource(image)) {
+            return false;
+          }
+          const currentTab = await chrome.tabs.get(tabId);
+          if (!currentTab.active || currentTab.status !== 'complete' || googleImageSearchQuery(currentTab.url) !== query ||
+              dialog.editingWord !== word || imageSearchVersion !== version || word.image || word.archived) {
+            return false;
+          }
+          word.image = image;
+          methods.saveEdit();
+          return true;
+        } catch {
+          return false;
         }
       },
 
@@ -375,16 +433,22 @@ export default {
 
       // Find image based on the 'front' field
       async findImageFromFront() {
+        imageSearchVersion += 1;
+        imageSearchQuery = util.delete_all_tags(dialog?.editingWord?.front).trim();
         await util.openImageSearchTab(
-          dialog?.editingWord?.front,
+          imageSearchQuery,
           dialog?.editingWord?.targetLang ? `&lang=${dialog?.editingWord?.targetLang}` : '');
+        await methods.captureImageFromSearchTab(util.options.imageSearchTabId);
         await methods.setDialogFocus(); // Set focus back to the dialog
       },
 
       // Find image based on the 'back' (Translation) field
       async handleFindImageFromBack() {
         const parts = util.delete_all_tags(dialog?.editingWord?.back).split(/[⏎,→;]/).map(s => s.trim()).filter(Boolean);
-        await util.openImageSearchTab(parts[0].trim());
+        imageSearchVersion += 1;
+        imageSearchQuery = parts[0] || '';
+        await util.openImageSearchTab(imageSearchQuery);
+        await methods.captureImageFromSearchTab(util.options.imageSearchTabId);
         await methods.setDialogFocus(); // Set focus back to the dialog
       },
     };
