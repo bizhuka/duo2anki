@@ -7,7 +7,7 @@
             :loading="loadingButton" @click="loadWords" />
           <ActionButton v-if="isDuolingo" icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
             :loading="loadingTable" @click="openContextDialog" />
-          <ActionButton icon="mdi-translate" :tooltipText="util.getText('Translate words')" color="primary"
+          <ActionButton v-if="!isDuolingo" icon="mdi-translate" :tooltipText="util.getText('Translate words')" color="primary"
             :loading="translatingWords" :disabled="!db_words.length || loadingTable || loadingButton"
             @click="$refs.translateWordsDialog.openTranslationDialog()" />
           <ActionButton icon-only :icon="allCourseWordsArchived ? 'mdi-archive-arrow-up-outline' : 'mdi-archive-arrow-down-outline'"

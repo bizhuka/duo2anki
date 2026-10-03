@@ -4,6 +4,7 @@
   "type": "module",
   "version": "0.0.0",
   "scripts": {
+    "test": "node tests/anki-export.test.mjs",
     "dev": "vite",
     "build": "vite build --outDir dist-duo2anki",
     "preview": "vite preview"

@@ -1,6 +1,7 @@
 import { get_translated_text, getDuolingoCourseLanguage } from "./i18n/translation.js";
 import { reactive } from "vue";
-import { buildTtsUrl, normalizeAzureLanguage, ENABLE_DEBUG_LOGGING } from "./ai.js";
+import { ENABLE_DEBUG_LOGGING } from "./ai.js";
+// import { buildTtsUrl, normalizeAzureLanguage } from "./ai.js";
 
 export const util = {
   options: reactive({
@@ -19,12 +20,11 @@ export const util = {
     imageSearchTabId: null, // Store the ID of the image search tab
 
     // Anki export options
+    ankiExportMode: 'direct',
     exportWithContextOnly: true,
-    exportWithAzureTranslationsOnly: true,
     includeScheduleInformation: true,
-    collection_media: false,
     exportWithTranslationsOnly: true,
-    exportWithImagesOnly: false,
+    exportWithImagesOnly: true,
 
     // Game Notification
     gameNotificationInterval: 0, // in minutes. 0 means 'off'.
@@ -65,7 +65,7 @@ export const util = {
   TTS_PROVIDER: {
     RESPONSIVE_VOICE: 'Responsive Voice',
     GOOGLE: 'Google',
-    AZURE_MICROSOFT: 'Azure Microsoft',
+    // AZURE_MICROSOFT: 'Azure Microsoft',
   },
 
   getCurrentCourse() {
@@ -123,8 +123,15 @@ export const util = {
     return addToBack ? this.mergeWithReturn(existingText, translation, false, ' → ') : translation;
   },
 
-  get_sound_url: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
-    if (!item || !item.targetLang) {
+  getTranslationAlternatives(text) {
+    const withLines = (text || '').replace(/<br\s*\/?>|<\/p\s*>|<\/div\s*>/gi, '\n');
+    const plainText = this.unescape_html(this.delete_all_tags(withLines));
+    return [...new Set(plainText.split(/[⏎,→;\r\n]+/)
+      .map(part => part.replace(/\s+/g, ' ').trim()).filter(Boolean))];
+  },
+
+  get_sound_text: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
+    if (!item) {
       return null;
     }
 
@@ -154,6 +161,14 @@ export const util = {
         break;
     }
 
+    return wholeText || null;
+  },
+
+  get_sound_url: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
+    if (!item || !item.targetLang) {
+      return null;
+    }
+    const wholeText = this.get_sound_text(item, mode);
     if (!wholeText) {
       return null;
     }
@@ -165,9 +180,9 @@ export const util = {
       case this.TTS_PROVIDER.GOOGLE:
         return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${item.targetLang}&q=${encodeURIComponent(wholeText)}`;
 
-      case this.TTS_PROVIDER.AZURE_MICROSOFT:
-        const languageCode = normalizeAzureLanguage(item.targetLang);
-        return buildTtsUrl(languageCode, wholeText);
+      // case this.TTS_PROVIDER.AZURE_MICROSOFT:
+      //   const languageCode = normalizeAzureLanguage(item.targetLang);
+      //   return buildTtsUrl(languageCode, wholeText);
     }
     return null;
   },
@@ -241,6 +256,10 @@ export const util = {
   async _set_options(options) {
     for (let key in options) {
       if (this.options.hasOwnProperty(key)) {
+        if (key === 'ttsProvider' && !Object.values(this.TTS_PROVIDER).includes(options[key])) {
+          this.options[key] = this.TTS_PROVIDER.RESPONSIVE_VOICE;
+          continue;
+        }
         if (Array.isArray(this.options[key])) {
           this.options[key] = [...options[key]];
           continue;

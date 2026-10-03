@@ -2,7 +2,7 @@
 import Components from 'unplugin-vue-components/vite'
 import Vue from '@vitejs/plugin-vue'
 import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
-import ViteFonts from 'unplugin-fonts/vite'
+// import ViteFonts from 'unplugin-fonts/vite'
 // import { copy } from 'vite-plugin-copy';
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 

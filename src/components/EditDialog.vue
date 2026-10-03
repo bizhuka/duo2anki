@@ -444,7 +444,7 @@ export default {
 
       // Find image based on the 'back' (Translation) field
       async handleFindImageFromBack() {
-        const parts = util.delete_all_tags(dialog?.editingWord?.back).split(/[⏎,→;]/).map(s => s.trim()).filter(Boolean);
+        const parts = util.getTranslationAlternatives(dialog?.editingWord?.back);
         imageSearchVersion += 1;
         imageSearchQuery = parts[0] || '';
         await util.openImageSearchTab(imageSearchQuery);

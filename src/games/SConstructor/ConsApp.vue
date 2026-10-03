@@ -241,11 +241,7 @@ export default {
       if(ENABLE_DEBUG_LOGGING)console.log('compareAnswer', this.constructedWords, this.currentSentence.back);
       switch(this.consMode){
         case 'frontGame':
-          // 1) normalize whitespace (double spaces, \n, \r, tabs → single space)
-          const cleaned = util.delete_all_tags(this.currentSentence.back).replace(/\s+/g, " ").trim();
-
-          // 2) split by "⏎", "," or "/" or "→"
-          const parts = cleaned.split(/[⏎,→;]/).map(s => s.trim()).filter(Boolean);
+          const parts = util.getTranslationAlternatives(this.currentSentence.back);
 
           const part = this.constructedWords.join(' ');
           return parts.includes(part);

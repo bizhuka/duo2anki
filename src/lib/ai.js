@@ -11,7 +11,8 @@ export function isLocalExtension() {
   }
 
   try {    
-    extension_id = chrome?.runtime?.id || "";
+    // extension_id = chrome?.runtime?.id || "";
+    const extension_id = chrome?.runtime?.id || "";
     return extension_id !== "ilcpcjkfnmgmjknmoclnlelkcaiibnkf" &&
            extension_id !== "lbmmipgdkklfhencdebpjjnpenifehle";
   } catch (error) {
@@ -46,10 +47,11 @@ export async function translateWithAzure(texts, to, from, isLocal = isLocalExten
   return result.map(translations => [...new Set(translations.map(translation => translation.word.trim()).filter(Boolean))].join('; '));
 }
 
-export function buildTtsUrl(language, text, isLocal = isLocalExtension()) {
-  const host = getApiHost(isLocal);
-  return `${host}/tts?language=${language}&text=${encodeURIComponent(text)}`;
-}
+// Azure TTS is disabled; retained for reference.
+// export function buildTtsUrl(language, text, isLocal = isLocalExtension()) {
+//   const host = getApiHost(isLocal);
+//   return `${host}/tts?language=${language}&text=${encodeURIComponent(text)}`;
+// }
 
 export function normalizeAzureLanguage(targetLang) {
   const raw = (targetLang || "").trim();

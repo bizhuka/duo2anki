@@ -49,6 +49,23 @@ function ankiHash(fields) {
   return rv_reversed.reverse().join('')
 }
 
+export function getStableNoteGuid(courseId, front, mode = 'direct') {
+    const identity = ['duo2anki', courseId, front.trim()];
+    if (mode !== 'direct') identity.push(mode);
+    const digest = sha256.array(JSON.stringify(identity));
+    let value = bigInt(0);
+    for (const byte of digest.slice(0, 8)) {
+        value = value.multiply(256).add(byte);
+    }
+    let guid = '';
+    while (value.greater(0)) {
+        const { quotient, remainder } = value.divmod(91);
+        guid = BASE91_TABLE[remainder.toJSNumber()] + guid;
+        value = quotient;
+    }
+    return guid || BASE91_TABLE[0];
+}
+
 const MODEL_STD = 0
 const MODEL_CLOZE = 1
 
