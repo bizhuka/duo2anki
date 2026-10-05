@@ -282,17 +282,18 @@ export default {
       let db;
       try {
         const questionContent = `<div>{{Front}}</div><div class="transcription">{{Transcription}}</div>`;
-        const answerContent = `${questionContent}<hr id=answer><div>{{Back}}</div>{{#Image}}<div><img src="{{Image}}"></div>{{/Image}}<div class="context">{{Context}}</div>`;
-        // Native TTS blocks allow a per-note language, including mixed-language reader imports.
-        const audio = field => `{{#TtsLanguage}}{{#${field}}}[anki:tts lang={{TtsLanguage}}]{{${field}}}[/anki:tts]{{/${field}}}{{/TtsLanguage}}`;
+        const answerContent = (contextAudio = '') => `${questionContent}<hr id=answer><div>{{Back}}</div>{{#Image}}<div><img src="{{Image}}"></div>{{/Image}}${contextAudio}<div class="context">{{Context}}</div>`;
+        const speed = options.ttsSpeed ?? 1;
+        // Native TTS blocks allow a per-note language, including mixed-language reader imports
+        const audio = field => `{{#TtsLanguage}}{{#${field}}}[anki:tts lang={{TtsLanguage}} speed=${speed}]{{${field}}}[/anki:tts]{{/${field}}}{{/TtsLanguage}}`;
         const templates = {
           direct: { name: util.getText('mainTemplate'), qfmt: `${questionContent}${audio('Sound')}`,
-            afmt: `${answerContent}${audio('ContextSound')}` },
+            afmt: answerContent(audio('ContextSound')) },
           reverse: { name: util.getText('Reverse'), qfmt: `{{#ReversePrompt}}<div>{{ReversePrompt}}</div>{{/ReversePrompt}}`,
-            afmt: `${answerContent}${audio('CombinedSound')}` },
+            afmt: `${answerContent()}${audio('CombinedSound')}` },
           listening: { name: util.getText('Listening'), qfmt: audio('CombinedSound'),
             // FrontSide retains the question replay button without queuing answer audio.
-            afmt: `{{FrontSide}}${answerContent}` },
+            afmt: `{{FrontSide}}${answerContent()}` },
         };
         const ankiModel = new Model({
           id: modelId,

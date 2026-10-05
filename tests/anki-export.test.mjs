@@ -153,16 +153,16 @@ for (const mode of ['direct', 'reverse', 'listening']) {
       if (mode === 'direct') {
         assert.equal(fields.Sound, 'bonjour');
         assert.equal(fields.ContextSound, 'Bonjour tout le monde.');
-        assert.ok(qfmt.includes(']{{Sound}}[/anki:tts]'));
-        assert.ok(afmt.includes(']{{ContextSound}}[/anki:tts]'));
+        assert.ok(qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{Sound}}[/anki:tts]'));
+        assert.ok(afmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{ContextSound}}[/anki:tts]'));
       } else {
         assert.equal(fields.ReversePrompt, 'hello; good morning');
         assert.equal(fields.CombinedSound, 'bonjour. Bonjour tout le monde.');
         if (mode === 'reverse') {
           assert.ok(qfmt.includes('{{ReversePrompt}}') && !qfmt.includes('[anki:tts'));
-          assert.ok(afmt.includes(']{{CombinedSound}}[/anki:tts]'));
+          assert.ok(afmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{CombinedSound}}[/anki:tts]'));
         } else {
-          assert.ok(qfmt.includes(']{{CombinedSound}}[/anki:tts]') && !qfmt.includes('{{Front}}'));
+          assert.ok(qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{CombinedSound}}[/anki:tts]') && !qfmt.includes('{{Front}}'));
           assert.ok(afmt.startsWith('{{FrontSide}}') && !afmt.includes('[anki:tts'));
         }
       }
@@ -184,9 +184,37 @@ test('language selection handles reader locales, aliases and missing languages',
   assert.equal(typeof vm.getValidWordsForExport(), 'string');
 });
 
+test('Anki speed stays in the template and mixed reader languages retain per-note selection', async () => {
+  const vm = exporter('listening');
+  vm.optionsData.ttsSpeed = 0.8;
+  const result = await exportCollection(vm);
+  assert.ok(result.model.tmpls[0].qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=0.8]{{CombinedSound}}[/anki:tts]'));
+  assert.equal(result.fields.TtsLanguage, 'fr_FR');
+
+  vm.db_words = [{ ...word, course_id: 'kindle' },
+    { ...word, front: 'hello', targetLang: 'en-GB', course_id: 'kindle' }];
+  vm.optionsData.current_course_id = 'kindle';
+  download = null;
+  await vm.triggerExport();
+  assert.ok(download, JSON.stringify(vm.messages));
+  const zip = await JSZip.loadAsync(await download.blob.arrayBuffer());
+  const db = new SQL.Database(await zip.file('collection.anki2').async('uint8array'));
+  try {
+    const model = Object.values(JSON.parse(db.exec('SELECT models FROM col')[0].values[0][0]))[0];
+    const languageIndex = model.flds.findIndex(field => field.name === 'TtsLanguage');
+    assert.ok(languageIndex >= 0);
+    assert.deepEqual(db.exec('SELECT flds FROM notes')[0].values.map(([fields]) => fields.split('\x1f')[languageIndex]),
+      ['fr_FR', 'en_GB']);
+    assert.ok(model.tmpls[0].qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=0.8]'));
+    assert.equal(db.exec('SELECT count(*) FROM cards')[0].values[0][0], 2);
+  } finally { db.close(); }
+});
+
 test('browser replay still stops the previous sound and OFF does not start audio', () => {
   const audioOriginal = globalThis.Audio;
   const playerOriginal = util.audioPlayer;
+  const speedOriginal = util.options.ttsSpeed;
+  const providerOriginal = util.options.ttsProvider;
   globalThis.Audio = class {
     constructor(url) { this.url = url; this.currentTime = 5; this.paused = false; }
     play() { this.played = true; return Promise.resolve(); }
@@ -201,8 +229,18 @@ test('browser replay still stops the previous sound and OFF does not start audio
     assert.equal(second.url, util.get_sound_url(word, util.SOUND_MODE.CONTEXT_ONLY));
     assert.equal(util.playSound(word, util.SOUND_MODE.OFF), null);
     assert.ok(second.paused && second.currentTime === 0);
+    for (const speed of [0.5, 0.8, 1, 1.5]) {
+      util.options.ttsSpeed = speed;
+      util.options.ttsProvider = util.TTS_PROVIDER.RESPONSIVE_VOICE;
+      assert.equal(new URL(util.get_sound_url(word)).searchParams.get('rate'), '0.5');
+      assert.equal(util.playSound(word).playbackRate, speed);
+      util.options.ttsProvider = util.TTS_PROVIDER.GOOGLE;
+      assert.equal(util.playSound(word).playbackRate, speed);
+    }
   } finally {
     globalThis.Audio = audioOriginal;
     util.audioPlayer = playerOriginal;
+    util.options.ttsSpeed = speedOriginal;
+    util.options.ttsProvider = providerOriginal;
   }
 });

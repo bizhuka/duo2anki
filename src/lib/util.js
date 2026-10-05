@@ -15,6 +15,7 @@ export const util = {
     add_2_back: true,
     translation_to: 'en',
     ttsProvider: "Responsive Voice",
+    ttsSpeed: 1,
 
     // Image Search
     imageSearchTabId: null, // Store the ID of the image search tab
@@ -202,6 +203,7 @@ export const util = {
 
     try {
       this.audioPlayer = new Audio(audioUrl);
+      this.audioPlayer.playbackRate = this.options.ttsSpeed;
       if(ENABLE_DEBUG_LOGGING)console.log("!!!!!!!!!!!Playing audio:", { item, mode });
       
       // Rely on browser audio playback via selected TTS provider

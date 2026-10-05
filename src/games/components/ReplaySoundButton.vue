@@ -1,34 +1,45 @@
 <template>
   <div class="replay-sound-wrapper">
-    <v-tooltip location="top" :text="card.front" :open-delay="1000">
+    <v-menu location="top" open-on-hover :open-on-click="false"
+      :close-on-content-click="false" :open-delay="400" :close-delay="300">
       <template #activator="{ props }">
         <v-icon
           v-bind="props"
-          color="success"
+          :color="getSoundIconColor(soundMode)"
           size="large"
-          @click="changeSoundMode"
+          @click="set_new(card, { force: true })"
         >{{ soundIcon }}</v-icon>
       </template>
-    </v-tooltip>
-
-    <v-tooltip
-      v-if="showProviderToggle"
-      location="top"
-      :text="ttsProviderTooltip"
-      :open-delay="400"
-    >
-      <template #activator="{ props }">
-        <v-btn
-          v-bind="props"
-          class="tts-provider-toggle"
-          variant="plain"
-          size="x-small"
-          density="compact"
-          rounded="sm"
-          @click.stop="toggleTtsProvider"
-        >{{ providerShortLabel }}</v-btn>
-      </template>
-    </v-tooltip>
+      <v-card width="22.5rem" max-width="calc(100vw - 2rem)">
+        <v-card-text>
+          <div class="mb-3">{{ card?.front }}</div>
+          <div class="text-caption mb-1">Sound mode</div>
+          <v-btn-toggle :model-value="soundMode" mandatory divided
+            variant="outlined" color="success" density="compact" class="tts-options mb-3"
+            @update:model-value="changeSoundMode">
+            <v-btn v-for="mode in soundModes" :key="mode.value" :value="mode.value"
+              :aria-label="mode.title" size="small">
+              <v-icon class="mr-1" :color="getSoundIconColor(mode.value)">{{ getSoundIcon(mode.value) }}</v-icon>
+              <span style="white-space: pre-line; line-height: 1.1">{{ mode.title }}</span>
+            </v-btn>
+          </v-btn-toggle>
+          <div class="text-caption mb-1">TTS provider</div>
+          <v-btn-toggle :model-value="options.ttsProvider" mandatory divided
+            :disabled="soundOff"
+            variant="outlined" color="success" density="compact" class="tts-options mb-3"
+            @update:model-value="changeTtsSettings({ ttsProvider: $event })">
+            <v-btn v-for="provider in providers" :key="provider" :value="provider" size="small">
+              <span style="white-space: pre-line; line-height: 1.1">{{ provider.replace('Responsive Voice', 'Responsive\nvoice') }}</span>
+            </v-btn>
+          </v-btn-toggle>
+          <div class="text-caption mb-1">Speed</div>
+          <v-slider v-model="options.ttsSpeed" aria-label="Speed" :disabled="soundOff"
+            :min="0.5" :max="1.5" density="compact"
+            :step="0.1" thumb-label hide-details
+            @end="changeTtsSettings({ ttsSpeed: $event })" />
+        </v-card-text>
+      </v-card>
+    </v-menu>
   </div>
 </template>
 
@@ -66,6 +77,8 @@ export default {
 
   data() {
     return {
+      options: util.options,
+      providers,
     };
   },
 
@@ -82,35 +95,19 @@ export default {
       return fallbackMode;
     },
     soundIcon(){
-      switch (this.soundMode) {
-        case util.SOUND_MODE.OFF:
-          return 'mdi-volume-off';
-        case util.SOUND_MODE.FRONT_WORD:
-          return 'mdi-volume-low';
-        case util.SOUND_MODE.CONTEXT_ONLY:
-          return 'mdi-volume-medium';
-        case util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT:
-          return 'mdi-volume-high';
-        default:
-          return 'mdi-volume-off'; // Default icon
-      }
+      return this.getSoundIcon(this.soundMode);
     },
-    showProviderToggle() {
-      return this.soundMode !== util.SOUND_MODE.OFF;
+    soundOff() {
+      return this.soundMode === util.SOUND_MODE.OFF;
     },
-    providerShortLabel() {
-      const provider = util.options.ttsProvider;
-      if (providers.includes(provider)) {
-        return provider.charAt(0);
-      }
-      return '?';
-    },
-    ttsProviderTooltip() {
-      const provider = util.options.ttsProvider;
-      if (providers.includes(provider)) {
-        return provider;
-      }
-      return '?';
+    soundModes() {
+      const labels = {
+        [util.SOUND_MODE.OFF]: 'Off',
+        [util.SOUND_MODE.FRONT_WORD]: 'Word',
+        [util.SOUND_MODE.CONTEXT_ONLY]: 'Context',
+        [util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT]: 'Word +\ncontext',
+      };
+      return this.modes.map(value => ({ value, title: labels[value] }));
     }
   },
 
@@ -124,11 +121,26 @@ export default {
     },
   },
   methods: {
+    getSoundIconColor(mode) {
+      return mode === util.SOUND_MODE.OFF ? 'grey-darken-1' : 'success';
+    },
+    getSoundIcon(mode) {
+      switch (mode) {
+        case util.SOUND_MODE.FRONT_WORD:
+          return 'mdi-volume-low';
+        case util.SOUND_MODE.CONTEXT_ONLY:
+          return 'mdi-volume-medium';
+        case util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT:
+          return 'mdi-volume-high';
+        default:
+          return 'mdi-volume-off';
+      }
+    },
     set_new(newCard, { force = false } = {}){
       if (newCard) {
         const newSoundMode = this.soundMode;
         if(ENABLE_DEBUG_LOGGING)console.log("set_new()1 called with mode:", newSoundMode, force );
-        const playbackKey = `${newCard.id ?? ''}::${newSoundMode}::${util.options.ttsProvider || ''}`;
+        const playbackKey = `${newCard.id ?? ''}::${newSoundMode}::${util.options.ttsProvider || ''}::${util.options.ttsSpeed}`;
 
         if (!force) {
           const cachedKey = playbackCache.get(newCard);
@@ -151,27 +163,18 @@ export default {
       }
     },
 
-    async toggleTtsProvider() {
-      const current = util.options.ttsProvider ?? util.TTS_PROVIDER.RESPONSIVE_VOICE;
-      const nextProvider = providers[(providers.indexOf(current) + 1) % providers.length];
-      util.options.ttsProvider = nextProvider;
-
+    async changeTtsSettings(settings) {
       try {
-        await util.save_options({ ttsProvider: nextProvider });
+        await util.save_options(settings);
       } catch (error) {
-        console.error('Failed to persist TTS provider preference:', error);
+        console.error('Failed to persist TTS preference:', error);
       }
 
       this.set_new(this.card, { force: true });
     },
 
-    async changeSoundMode() {
-      if (!this.modes.length) return;
-
-      const currentIndex = this.modes.indexOf(this.soundMode);
-      // Cycle to the next mode in the allowed list
-      const nextIndex = (currentIndex + 1) % this.modes.length;
-      const newMode = this.modes[nextIndex];
+    async changeSoundMode(newMode) {
+      if (!this.modes.includes(newMode)) return;
 
       if(ENABLE_DEBUG_LOGGING)console.log("changeSoundMode called with mode:", newMode);
 
@@ -196,26 +199,15 @@ export default {
   display: inline-flex;
 }
 
-.tts-provider-toggle {
-  position: absolute;
-  bottom: -0.1rem;
-  right: -0.05rem;
-  width: 0.65rem;
-  height: 0.65rem;
-  min-width: 0;
-  padding: 0;
+.tts-options {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.45rem;
-  line-height: 1;
-  background-color: rgba(33, 33, 33, 0.35);
-  color: #fff;
-  border-radius: 2px;
-  transition: background-color 100ms ease;
 }
 
-.tts-provider-toggle:hover {
-  background-color: rgba(33, 33, 33, 0.6);
+.tts-options .v-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 0.375rem;
+  text-transform: none;
 }
+
 </style>

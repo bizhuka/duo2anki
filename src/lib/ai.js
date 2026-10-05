@@ -102,5 +102,8 @@ export async function process_with_GROQ(wordsToProcess, optionsData) {
 
   const apiResult = await call_api(fullContextText);
 
-  return apiResult && apiResult.results ? apiResult.results : null;
+  return apiResult && apiResult.results ? apiResult.results.map(result => ({
+    ...result,
+    context: result.context?.trim().replace(/^"+|"+$/g, '').trim(),
+  })) : null;
 }

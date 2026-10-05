@@ -27,7 +27,6 @@
               <ReplaySoundButton
                 :card="dialog.editingWord"
                 :modes="frontSoundModes"
-                @sound-mode-changed="methods.setDialogFocus"
               />
             </template>
             <!-- Search for image button -->

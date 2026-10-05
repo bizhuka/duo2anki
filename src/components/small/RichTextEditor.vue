@@ -112,9 +112,10 @@ const handleUpdate = (content) => {
     return;
   }
 
-  // 1. Get the raw text content, preserving HTML tags.
+  // 1. Remove paragraph wrappers before rebuilding them; keep inline formatting.
   const textContent = content
-    .replace(/<\/p><p>/g, '')    
+    .replace(/<\/?p(?:\s[^>]*)?>/gi, '')
+    .replace(/^(?:\s|<br\s*\/?>)+|(?:\s|<br\s*\/?>)+$/gi, '')
     .replace(/\s+/g, ' ').trim();
 
   // 2. Split the text by delimiters.
