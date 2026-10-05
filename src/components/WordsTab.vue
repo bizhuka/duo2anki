@@ -304,7 +304,7 @@ export default {
 
     // --- Dialog Triggers ---
     handleEditRequest(item) {
-      console.log(item);
+      // console.log(item);
       this.$refs.editDialog.methods.edit_popup(item);
     },
 

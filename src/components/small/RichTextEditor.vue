@@ -1,22 +1,28 @@
 <template>
   <!-- Bind the computed style to set the CSS variable -->
   <div class="rich-text-editor-wrapper mb-2" :style="editorStyle">
-    <label v-if="label" class="v-label v-label--clickable">{{ label }}</label>
+    <slot name="label">
+      <label v-if="label" class="v-label v-label--clickable">{{ label }}</label>
+    </slot>
     <QuillEditor
       :content="modelValue"
       @update:content="handleUpdate"
+      @ready="handleReady"
       :options="editorOptions"
       contentType="html"
       theme="snow"
       :style="{ minHeight: props.minHeight }"
     />
+    <Teleport v-if="toolbarTarget && $slots['toolbar-start']" :to="toolbarTarget">
+      <span class="toolbar-start"><slot name="toolbar-start" /></span>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { QuillEditor } from '@vueup/vue-quill';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useTheme } from 'vuetify'; // Import useTheme
 import { util } from '@/lib/util'; // Import util
 
@@ -58,6 +64,11 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue']);
 const theme = useTheme(); // Get the theme object
+const toolbarTarget = ref(null);
+const handleReady = quill => {
+  toolbarTarget.value = quill.getModule('toolbar')?.container.querySelector('.ql-customButton1')?.parentElement;
+};
+
 
 // Computed property for the icon content CSS variable
 // Generic computed property for the custom button icon content
@@ -162,12 +173,39 @@ const handleUpdate = (content) => {
   display: block; /* Ensure label takes its own line */
 }
 
+.toolbar-start {
+  order: -1;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.25rem;
+}
+
+.toolbar-start :deep(.v-btn) {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  float: none;
+}
+.toolbar-start :deep(.v-icon) {
+  font-size: 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+}
 /* Style adjustments for Quill inside Vuetify */
 :deep(.ql-toolbar.ql-snow) {
+  display: flex;
+  align-items: center;
   border-top-left-radius: 4px;
   border-top-right-radius: 4px;
   border-bottom: 0;
   padding: 8px;
+}
+
+:deep(.ql-toolbar .ql-formats:has(.ql-customButton1)) {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 0;
 }
 
 :deep(.ql-container.ql-snow) {
@@ -198,14 +236,20 @@ const handleUpdate = (content) => {
 }
 
 /* Style the generic custom button */
+:deep(.ql-toolbar .ql-customButton1) {
+  width: 2rem;
+  height: 2rem;
+  padding: 0.25rem;
+}
+
 :deep(.ql-toolbar .ql-customButton1::before) {
   font-family: 'Material Design Icons'; /* Ensure MDI font is used */
   content: var(--custom-button1-icon); /* Use generic CSS variable for icon */
   color: var(--custom-button1-color); /* Use generic CSS variable for color */
-  font-size: 18px; /* Adjust size as needed */
-  line-height: 18px; /* Match button inner height (24px - 3px*2) */
+  font-size: 1.5rem;
+  line-height: 1.5rem;
   display: inline-block; /* Needed for proper rendering */
-  width: 18px; /* Match button inner width (28px - 5px*2) */
+  width: 1.5rem;
   vertical-align: middle; /* Align icon vertically */
 }
 

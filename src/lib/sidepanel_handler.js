@@ -1,9 +1,16 @@
-import { util } from './util.js'; // Import util for open_side_panel
 import { googleImageSearchQuery } from './imageSearch.js';
 
 let sidePanelPort = null; // Holds the connection port to the side panel if open
 let pendingImageSearchTabId = null;
 
+function openSidePanel(tab) {
+    const target = Number.isInteger(tab?.id)
+        ? { tabId: tab.id }
+        : { windowId: chrome.windows.WINDOW_ID_CURRENT };
+    chrome.sidePanel.open(target).catch(error => {
+        console.error('Failed to open side panel:', error);
+    });
+}
 function sendImageSearchCapture(tabId) {
     chrome.runtime.sendMessage({
         foreground: true,
@@ -19,7 +26,7 @@ function requestImageSearchCapture(tab) {
         sendImageSearchCapture(tab.id);
     } else {
         pendingImageSearchTabId = tab.id;
-        util.open_side_panel({ active: true, currentWindow: true });
+        openSidePanel(tab);
     }
     return true;
 }
@@ -50,7 +57,7 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 // Function to toggle the side panel
-function toggleSidePanel() {
+function toggleSidePanel(tab) {
     if (sidePanelPort) {
         // Panel is open, send message to close it
         // The side panel should handle closing itself upon receiving this message
@@ -60,20 +67,18 @@ function toggleSidePanel() {
         });
     } else {
         // Panel is closed, open it
-        util.open_side_panel({ active: true, currentWindow: true });
+        openSidePanel(tab);
     }
 }
 
 // Listener for keyboard shortcuts
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands.onCommand.addListener((command, tab) => {
     if (command === 'app_side_panel') {
-        chrome.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-            if (!requestImageSearchCapture(tabs[0])) toggleSidePanel();
-        }).catch(() => {});
+        if (!requestImageSearchCapture(tab)) toggleSidePanel(tab);
     }
 });
 
 // Listener for the extension icon click
 chrome.action.onClicked.addListener(tab => {
-    if (!requestImageSearchCapture(tab)) toggleSidePanel();
+    if (!requestImageSearchCapture(tab)) toggleSidePanel(tab);
 });

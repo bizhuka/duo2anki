@@ -21,8 +21,13 @@ async function create_or_update_context_menu() {
     }
 
     if (!currentEditingWordFront) {
-        // Remove the image context menu if no valid course
-        chrome.contextMenus.remove(IMAGE_CONTEXT_MENU_ID);
+        // The image menu may already be absent when no word is being edited.
+        chrome.contextMenus.remove(IMAGE_CONTEXT_MENU_ID, () => {
+            const error = chrome.runtime.lastError;
+            if (error && !error.message.includes(`Cannot find menu item with id ${IMAGE_CONTEXT_MENU_ID}`)) {
+                console.error('Failed to remove image context menu:', error.message);
+            }
+        });
     } else {
 
         const title = util.getText('image_contextMenu', [currentEditingWordFront]);

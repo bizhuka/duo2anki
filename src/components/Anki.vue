@@ -290,7 +290,7 @@ export default {
           direct: { name: util.getText('mainTemplate'), qfmt: `${questionContent}${audio('Sound')}`,
             afmt: answerContent(audio('ContextSound')) },
           reverse: { name: util.getText('Reverse'), qfmt: `{{#ReversePrompt}}<div>{{ReversePrompt}}</div>{{/ReversePrompt}}`,
-            afmt: `${answerContent()}${audio('CombinedSound')}` },
+            afmt: answerContent(audio('CombinedSound')) },
           listening: { name: util.getText('Listening'), qfmt: audio('CombinedSound'),
             // FrontSide retains the question replay button without queuing answer audio.
             afmt: `{{FrontSide}}${answerContent()}` },

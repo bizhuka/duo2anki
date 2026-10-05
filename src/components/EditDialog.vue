@@ -17,14 +17,14 @@
         <v-btn icon="mdi-close" variant="text" density="compact" size="x-large" @click="methods.closeDialog"
           style="position: absolute; top: 8px; right: 8px;"></v-btn>
       </v-card-title>
-      <v-card-text style="padding-top: 0.2rem; padding-bottom: 0; overflow-y: auto; max-height: 70vh;">
+      <v-card-text style="padding-top: 0.2rem; padding-bottom: 0; overflow-y: auto; max-height: 70vh;" density="compact">
         <v-col style="padding-top: 0;padding-bottom: 0; display: flex; flex-direction: column; flex-grow: 1;">
 
           <v-text-field v-model="dialog.editingWord.front" :label="util.getText('Word')" v-if="dialog.showRichText" density="compact"
             hide-details readonly="true" class="mb-2"> <!-- Added margin-bottom -->
             <!-- Play sound with the word ONLY -->
             <template v-slot:append-inner v-if="!dialog.editingWord.archived">
-              <ReplaySoundButton
+              <ReplaySoundButton ref="frontSoundButton"
                 :card="dialog.editingWord"
                 :modes="frontSoundModes"
               />
@@ -42,24 +42,35 @@
           </v-text-field>
 
           <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.transcription" :label="util.getText('hintOrTranscription')"
-            min-height="1.5rem" class="mb-2" :optionsData="optionsData" :hideToolbar="true"/>
+            min-height="1.3rem" class="mb-2" :optionsData="optionsData" :hideToolbar="true" density="compact"/>
 
           <!-- Translation - Find back image-->
           <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.back" :label="util.getText('Translation')"
             min-height="2rem" class="mb-2" :handlers="{ customButton1Click: methods.handleFindImageFromBack }"
             :icons="{ customButton1Icon: '\\F0978', customButton1Color: 'primary' }"
-            :break-delimeter="'⏎;→'" :optionsData="optionsData" />
-
-          <v-checkbox v-if="!dialog.editingWord.archived"
-            :model-value="dialog.editingWord.hasTranslation === true"
-            @update:model-value="dialog.editingWord.hasTranslation = $event"
-            :label="util.getText('Translated with Azure')" density="compact" hide-details class="mb-2" />
+            :break-delimeter="'⏎;→'" :optionsData="optionsData">
+            <template #label>
+              <div class="d-flex align-center justify-space-between">
+                <span class="v-label">{{ util.getText('Translation') }}</span>
+                <v-checkbox
+                  :model-value="dialog.editingWord.hasTranslation === true"
+                  @update:model-value="dialog.editingWord.hasTranslation = $event"
+                  :label="util.getText('Mark as translated')" density="compact" hide-details class="flex-grow-0" />
+              </div>
+            </template>
+          </RichTextEditor>
 
           <!-- Context Play sound context-->
           <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.context" :label="util.getText('Context')"
             min-height="6rem" hide-details class="mb-2"
             :handlers="{ customButton1Click: methods.handleContextPlaySound }"
-            :icons="{ customButton1Icon: '\\F057E', customButton1Color: 'success' }" :break-delimeter="'⏎'" :optionsData="optionsData" />
+            :icons="{ customButton1Icon: '\\F057E', customButton1Color: 'success' }" :break-delimeter="'⏎'" :optionsData="optionsData">
+            <template #toolbar-start>
+              <GenerateExampleButton :word="dialog.editingWord" :optionsData="optionsData"
+                :sound-mode="frontSoundButton?.soundMode ?? util.SOUND_MODE.OFF"
+                @save="methods.saveGeneratedExample" />
+            </template>
+          </RichTextEditor>
 
           <!-- Combined Image Display and Drop Zone -->
           <ImageDropZone
@@ -95,10 +106,11 @@ import { reactive, ref, watch, nextTick, computed, onBeforeUnmount } from 'vue';
 import { util } from '@/lib/util';
 import { ENABLE_DEBUG_LOGGING } from '@/lib/ai.js';
 import ReplaySoundButton from '@/games/components/ReplaySoundButton.vue';
+import GenerateExampleButton from './small/GenerateExampleButton.vue';
 import { googleImageSearchQuery, readGoogleSearchImage } from '@/lib/imageSearch.js';
 
 export default {
-  components: { ReplaySoundButton },
+  components: { ReplaySoundButton, GenerateExampleButton },
   emits: ['save'],
 
   props: {
@@ -124,6 +136,7 @@ export default {
       editingIndex: -1, // To track the index of the currently edited word
       showRichText: true, // Control visibility of RichTextEditors
     });
+    const frontSoundButton = ref(null);
     const saveDialog = ref(null); // Reference to the ConfirmDialog component
     let imageSearchQuery = '';
     let imageSearchVersion = 0;
@@ -382,6 +395,17 @@ export default {
         dialog.editingWord = null;
       },
 
+      saveGeneratedExample({ word, back, context, replaceTranslation, replaceContext }) {
+        if (!dialog.show || dialog.editingWord !== word || word.archived ||
+            (!replaceTranslation && !replaceContext)) return;
+        if (replaceTranslation) {
+          word.back = back;
+          word.hasTranslation = true;
+        }
+        if (replaceContext) word.context = context;
+        methods.saveEdit();
+      },
+
       saveEdit() {
         if (dialog.editingWord) {
           emit('save', dialog.editingWord);
@@ -458,6 +482,7 @@ export default {
       saveDialog, // <-- Expose the ref to the template
       methods,
       frontSoundModes,
+      frontSoundButton,
     };
   }
 }

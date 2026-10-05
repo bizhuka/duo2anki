@@ -5,9 +5,15 @@
       <v-list density="compact">
         <v-list-item>
           <v-list-item-title>
-            <v-chip color="primary" label size="small" class="me-2">Alt + A</v-chip>
+            <v-chip color="primary" label size="small" class="me-2">Alt + D</v-chip>
             {{ util.getText('Open/Close Side Panel', ['duo2anki']) }}
           </v-list-item-title>
+          <div class="text-caption mt-2">
+            {{ util.getText('hotkeys_shortcutSettingsHint') }}
+            <a href="chrome://extensions/shortcuts" @click.prevent="openShortcutSettings">
+              chrome://extensions/shortcuts
+            </a>
+          </div>
         </v-list-item>
       </v-list>
     </v-card>
@@ -50,6 +56,8 @@
 
 <script setup>
 import { util } from '@/lib/util'; // Import util
+
+const openShortcutSettings = () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
 
 // Define props
 const { optionsData } = defineProps({
