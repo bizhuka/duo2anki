@@ -1,4 +1,5 @@
 import './ai-example.test.mjs';
+import './reader-import.test.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -10,25 +11,27 @@ import { sha256 } from 'js-sha256';
 import { STATUS } from '../src/lib/database.js';
 import { util } from '../src/lib/util.js';
 import { isLocalExtension, getTranslateUrl } from '../src/lib/ai.js';
+import { translationLanguages } from '../src/lib/translationLanguages.js';
+import { getDuolingoCourseLanguage, normalizeLanguageCode } from '../src/lib/i18n/translation.js';
 
 // Load the existing exporter with an in-memory download sink. FileSaver's named
 // browser export cannot be imported directly by Node; production code stays intact.
 let download;
 const genankiSource = readFileSync(new URL('../src/lib/genanki.js', import.meta.url), 'utf8')
   .replace(/^import .*;$/gm, '').replace(/^export /gm, '');
-const { Model, Deck, Note, Package: AnkiPackage, getStableNoteGuid } = new Function(
+const { Model, Deck, Note, Package: AnkiPackage, getStableNoteGuid, getReaderAnkiId } = new Function(
   'saveAs', 'sha256', 'JSZip', 'bigInt', 'STATUS',
-  `${genankiSource}\nreturn { Model, Deck, Note, Package, getStableNoteGuid };`
+  `${genankiSource}\nreturn { Model, Deck, Note, Package, getStableNoteGuid, getReaderAnkiId };`
 )((blob, name) => { download = { blob, name }; }, sha256, JSZip, bigInt, STATUS);
 const { descriptor } = parse(readFileSync(new URL('../src/components/Anki.vue', import.meta.url), 'utf8'));
-const component = new Function('util', 'ActionButton', 'Model', 'Deck', 'Note', 'AnkiPackage', 'getStableNoteGuid',
+const component = new Function('util', 'ActionButton', 'Model', 'Deck', 'Note', 'AnkiPackage', 'getStableNoteGuid', 'getReaderAnkiId', 'normalizeLanguageCode',
   descriptor.script.content.replace(/^import .*;$/gm, '').replace('export default', 'return')
-)(util, {}, Model, Deck, Note, AnkiPackage, getStableNoteGuid);
+)(util, {}, Model, Deck, Note, AnkiPackage, getStableNoteGuid, getReaderAnkiId, normalizeLanguageCode);
 const SQL = await initSqlJs();
 globalThis.window = { SQL };
 
 const word = { id: 1, front: 'bonjour', back: 'hello; good morning; greeting',
-  context: '<b>Bonjour</b> tout le monde. → Hello everyone.', transcription: 'bɔ̃ʒuʁ',
+  context: '<b>Bonjour</b> tout le monde. → Hello everyone.', transcription: 'bɔ̃ʒuʁ', hint: 'French book',
   targetLang: 'fr', image: 'example.png', hasTranslation: true, course_id: 'fr_en' };
 
 function exporter(mode, words = [word], courseId = 'fr_en') {
@@ -117,10 +120,6 @@ test('every exportWith option is enabled by default and has a compilable checkbo
 test('each checkbox filters both Duolingo and reader words and can be disabled', () => {
   const missing = [
     ['exportWithContextOnly', { context: '' }],
-    ['exportWithTranslationsOnly', { back: '' }],
-    ['exportWithTranslationsOnly', { back: '   ' }],
-    ['exportWithTranslationsOnly', { hasTranslation: false }],
-    ['exportWithTranslationsOnly', { hasTranslation: undefined }],
     ['exportWithImagesOnly', { image: '' }],
   ];
   for (const course_id of ['fr_en', 'kindle']) {
@@ -130,6 +129,23 @@ test('each checkbox filters both Duolingo and reader words and can be disabled',
       vm.optionsData[option] = false;
       assert.equal(vm.getValidWordsForExport().length, 1);
     }
+  }
+});
+
+test('Anki always requires marked nonempty translations and disables export when no eligible words remain', () => {
+  assert.equal(Object.hasOwn(util.options, 'exportWithTranslationsOnly'), false);
+  assert.doesNotMatch(descriptor.template.content, /v-model="optionsData.exportWithTranslationsOnly"/);
+  assert.match(descriptor.template.content, /anki_translationRequired/);
+  for (const course_id of ['fr_en', 'fr_kindle', 'fr_koreader']) {
+    for (const change of [{ back: '' }, { back: ' ' }, { back: '<p><br></p>' }, { hasTranslation: false },
+      { hasTranslation: null }, { hasTranslation: undefined }]) {
+      const vm = exporter('direct', [{ ...word, course_id, ...change }], course_id);
+      vm.optionsData.exportWithTranslationsOnly = false;
+      assert.equal(typeof vm.getValidWordsForExport(), 'string');
+      assert.equal(vm.canExport, false);
+    }
+    const valid = exporter('direct', [{ ...word, course_id }], course_id);
+    assert.equal(valid.canExport, true);
   }
 });
 
@@ -145,25 +161,50 @@ for (const mode of ['direct', 'reverse', 'listening']) {
     globalThis.fetch = () => { throw new Error('Export attempted a network request'); };
     try {
       const { model, fields, guid } = await exportCollection(vm);
-      assert.equal(fields.TtsLanguage, 'fr_FR');
+      assert.equal(Object.hasOwn(fields, 'TtsLanguage'), false);
+      assert.equal(model.flds.some(field => field.name === 'TtsLanguage'), false);
       assert.equal(fields.Context, word.context);
+      assert.equal(fields.Hint, word.hint);
+      assert.equal(fields.Transcription, word.transcription);
+      assert.equal(model.flds.at(-1).name, 'Hint');
       assert.equal(guid, getStableNoteGuid(word.course_id, word.front, mode));
       assert.deepEqual(new Note(new Model(model), Object.values(fields)).cards, [0]);
       const { qfmt, afmt } = model.tmpls[0];
+      assert.doesNotMatch(qfmt + afmt, /TtsLanguage/);
+      assert.match(qfmt, /\{\{Hint\}\}/);
+      if (mode === 'listening') {
+        assert.ok(qfmt.indexOf('[anki:tts') < qfmt.indexOf('{{Hint}}'));
+        assert.doesNotMatch(qfmt, /\{\{Transcription\}\}/);
+        assert.match(afmt, /\{\{FrontSide\}\}/);
+        assert.match(afmt, /\{\{Transcription\}\}/);
+        assert.doesNotMatch(afmt, /\{\{Hint\}\}/);
+      } else {
+        assert.match(afmt, /\{\{Hint\}\}/);
+        if (mode === 'reverse') {
+          assert.doesNotMatch(qfmt, /\{\{Transcription\}\}/);
+          assert.match(afmt, /<div>\{\{Front\}\}<\/div>\{\{#Transcription\}\}/);
+          assert.match(afmt, /\{\{Transcription\}\}/);
+        } else {
+          assert.match(qfmt, /\{\{Transcription\}\}/);
+          assert.ok(qfmt.indexOf('{{Front}}') < qfmt.indexOf('{{Transcription}}'));
+          assert.ok(qfmt.indexOf('{{Transcription}}') < qfmt.indexOf('{{Hint}}'));
+          assert.ok(qfmt.indexOf('{{Hint}}') < qfmt.indexOf('[anki:tts'));
+        }
+      }
       assert.ok(!qfmt.includes('[sound:') && !afmt.includes('[sound:'));
       if (mode === 'direct') {
         assert.equal(fields.Sound, 'bonjour');
         assert.equal(fields.ContextSound, 'Bonjour tout le monde.');
-        assert.ok(qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{Sound}}[/anki:tts]'));
-        assert.ok(afmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{ContextSound}}[/anki:tts]'));
+        assert.ok(qfmt.includes('[anki:tts lang=fr_FR speed=1]{{Sound}}[/anki:tts]'));
+        assert.ok(afmt.includes('[anki:tts lang=fr_FR speed=1]{{ContextSound}}[/anki:tts]'));
       } else {
         assert.equal(fields.ReversePrompt, 'hello; good morning');
         assert.equal(fields.CombinedSound, 'bonjour. Bonjour tout le monde.');
         if (mode === 'reverse') {
           assert.ok(qfmt.includes('{{ReversePrompt}}') && !qfmt.includes('[anki:tts'));
-          assert.ok(afmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{CombinedSound}}[/anki:tts]'));
+          assert.ok(afmt.includes('[anki:tts lang=fr_FR speed=1]{{CombinedSound}}[/anki:tts]'));
         } else {
-          assert.ok(qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=1]{{CombinedSound}}[/anki:tts]') && !qfmt.includes('{{Front}}'));
+          assert.ok(qfmt.includes('[anki:tts lang=fr_FR speed=1]{{CombinedSound}}[/anki:tts]') && !qfmt.includes('{{Front}}'));
           assert.ok(afmt.startsWith('{{FrontSide}}') && !afmt.includes('[anki:tts'));
         }
       }
@@ -178,37 +219,66 @@ for (const mode of ['direct', 'reverse', 'listening']) {
 test('language selection handles reader locales, aliases and missing languages', () => {
   const vm = exporter('listening');
   for (const [language, expected] of [['en', 'en_US'], ['en-GB', 'en_GB'], ['ja', 'ja_JP'],
-    ['zh-TW', 'zh_TW'], ['pt_BR', 'pt_BR'], ['ua', 'uk_UA'], ['no', 'nb_NO'], ['', ''], ['invalid language', '']]) {
+    ['zh-TW', 'zh_TW'], ['pt_BR', 'pt_BR'], ['ua', 'uk_UA'], ['UK', 'uk_UA'], ['ua_UA', 'uk_UA'],
+    ['ukr', 'uk_UA'], ['no', 'nb_NO'], ['', ''], ['invalid language', '']]) {
     assert.equal(vm.getTtsLanguage(language), expected);
   }
   vm.db_words = [{ ...word, targetLang: '' }];
+  assert.equal(vm.getValidWordsForExport().length, 1);
+  vm.optionsData.current_course_id = 'kindle';
+  vm.db_words = [{ ...word, course_id: 'kindle' }];
   assert.equal(typeof vm.getValidWordsForExport(), 'string');
 });
 
-test('Anki speed stays in the template and mixed reader languages retain per-note selection', async () => {
+test('shared language normalization handles Ukrainian aliases without changing stored course IDs', () => {
+  for (const code of ['UA', 'UK', 'ua', 'uk', 'ukr', 'ua_UA', 'UK-ua']) {
+    assert.equal(normalizeLanguageCode(code).split('-')[0], 'uk');
+    assert.equal(getDuolingoCourseLanguage(code), 'Ukrainian');
+  }
+  assert.equal(normalizeLanguageCode('UA_UA'), 'uk-ua');
+  assert.equal(normalizeLanguageCode('zh_Hant_TW'), 'zh-hant-tw');
+  assert.equal(getDuolingoCourseLanguage('nb'), 'Norwegian (Bokmål)');
+  assert.deepEqual(util.get_course_info('ua_en'), { targetLang: 'ua', sourceLang: 'en', lang_id: 'UA' });
+  assert.match(util.getCourseName('uk_kindle'), /Ukrainian/);
+  assert.match(descriptor.template.content, /anki_scheduleInfoTooltip/);
+});
+
+test('Anki templates take locale only from course_id and ignore individual word locales', async () => {
   const vm = exporter('listening');
   vm.optionsData.ttsSpeed = 0.8;
   const result = await exportCollection(vm);
-  assert.ok(result.model.tmpls[0].qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=0.8]{{CombinedSound}}[/anki:tts]'));
-  assert.equal(result.fields.TtsLanguage, 'fr_FR');
+  assert.ok(result.model.tmpls[0].qfmt.includes('[anki:tts lang=fr_FR speed=0.8]{{CombinedSound}}[/anki:tts]'));
+  assert.equal(Object.hasOwn(result.fields, 'TtsLanguage'), false);
 
   vm.db_words = [{ ...word, course_id: 'kindle' },
     { ...word, front: 'hello', targetLang: 'en-GB', course_id: 'kindle' }];
   vm.optionsData.current_course_id = 'kindle';
   download = null;
   await vm.triggerExport();
-  assert.ok(download, JSON.stringify(vm.messages));
-  const zip = await JSZip.loadAsync(await download.blob.arrayBuffer());
-  const db = new SQL.Database(await zip.file('collection.anki2').async('uint8array'));
+  assert.equal(download, null);
+  assert.equal(vm.messages.at(-1)[1], 'warning');
+
+  const previous = util.options.current_course_id;
   try {
-    const model = Object.values(JSON.parse(db.exec('SELECT models FROM col')[0].values[0][0]))[0];
-    const languageIndex = model.flds.findIndex(field => field.name === 'TtsLanguage');
-    assert.ok(languageIndex >= 0);
-    assert.deepEqual(db.exec('SELECT flds FROM notes')[0].values.map(([fields]) => fields.split('\x1f')[languageIndex]),
-      ['fr_FR', 'en_GB']);
-    assert.ok(model.tmpls[0].qfmt.includes('[anki:tts lang={{TtsLanguage}} speed=0.8]'));
-    assert.equal(db.exec('SELECT count(*) FROM cards')[0].values[0][0], 2);
-  } finally { db.close(); }
+    util.options.current_course_id = 'en_kindle';
+    const reader = exporter('listening', [{ ...word, course_id: 'en_kindle', targetLang: 'en-GB' }], 'en_kindle');
+    const courseVoice = await exportCollection(reader);
+    assert.match(courseVoice.model.tmpls[0].qfmt, /lang=en_US speed=1/);
+    reader.db_words = [{ ...word, course_id: 'en_kindle', targetLang: 'en-GB' },
+      { ...word, front: 'hello', course_id: 'en_kindle', targetLang: 'fr' },
+      { ...word, front: 'bye', course_id: 'en_kindle', targetLang: '' }];
+    download = null;
+    await reader.triggerExport();
+    assert.ok(download);
+    const zip = await JSZip.loadAsync(await download.blob.arrayBuffer());
+    const db = new SQL.Database(await zip.file('collection.anki2').async('uint8array'));
+    try {
+      const model = Object.values(JSON.parse(db.exec('SELECT models FROM col')[0].values[0][0]))[0];
+      assert.match(model.tmpls[0].qfmt, /lang=en_US speed=1/);
+      assert.equal(model.flds.some(field => field.name === 'TtsLanguage'), false);
+      assert.equal(db.exec('SELECT count(*) FROM cards')[0].values[0][0], 3);
+    } finally { db.close(); }
+  } finally { util.options.current_course_id = previous; }
 });
 
 test('browser replay still stops the previous sound and OFF does not start audio', () => {
@@ -244,4 +314,57 @@ test('browser replay still stops the previous sound and OFF does not start audio
     util.options.ttsSpeed = speedOriginal;
     util.options.ttsProvider = providerOriginal;
   }
+});
+
+test('reader model/deck IDs and note GUIDs differ across readers, languages and modes and remain stable', () => {
+  const ids = new Set();
+  const guids = new Set();
+  for (const reader of ['kindle', 'koreader']) {
+    for (const language of new Set(translationLanguages.map(item => item.value))) {
+      const course = util.createReaderCourseId(reader, language);
+      for (const mode of ['direct', 'reverse', 'listening']) {
+        for (const role of ['model', 'deck']) {
+          const id = getReaderAnkiId(course, mode, role);
+          assert.equal(Number.isSafeInteger(id), true);
+          assert.equal(id >= 1000000000000, true);
+          assert.equal(ids.has(id), false);
+          assert.equal(getReaderAnkiId(course, mode, role), id);
+          ids.add(id);
+        }
+        const guid = getStableNoteGuid(course, 'bonjour', mode);
+        assert.equal(guids.has(guid), false);
+        guids.add(guid);
+      }
+    }
+  }
+});
+
+test('language-specific reader APKGs have separate note types and retain current native audio templates', async () => {
+  const previous = util.options.current_course_id;
+  const models = new Set();
+  const guids = new Set();
+  try {
+    for (const course of ['fr_kindle', 'fr_koreader', 'en_kindle']) {
+      for (const mode of ['direct', 'reverse', 'listening']) {
+        util.options.current_course_id = course;
+        const vm = exporter(mode, [{ ...word, course_id: course, targetLang: course.split('_')[0] }], course);
+        assert.match(vm.deckName, course.endsWith('kindle') ? /Kindle/ : /KOReader/);
+        assert.match(vm.nodeType, course.startsWith('fr') ? /French/ : /English/);
+        const exported = await exportCollection(vm);
+        assert.equal(exported.model.id, getReaderAnkiId(course, mode, 'model'));
+        assert.equal(models.has(exported.model.id), false);
+        assert.equal(guids.has(exported.guid), false);
+        models.add(exported.model.id);
+        guids.add(exported.guid);
+        assert.equal(exported.fields.Transcription, word.transcription);
+        assert.equal(exported.fields.Hint, word.hint);
+        assert.equal(Object.hasOwn(exported.fields, 'TtsLanguage'), false);
+        assert.match(exported.model.tmpls[0].qfmt + exported.model.tmpls[0].afmt,
+          course.startsWith('fr') ? /lang=fr_FR speed=1/ : /lang=en_US speed=1/);
+        const repeated = await exportCollection(vm);
+        assert.equal(repeated.model.id, exported.model.id);
+        assert.equal(repeated.guid, exported.guid);
+      }
+    }
+  } finally { util.options.current_course_id = previous; }
 });

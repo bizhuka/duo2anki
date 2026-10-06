@@ -65,6 +65,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue']);
 const theme = useTheme(); // Get the theme object
 const toolbarTarget = ref(null);
+// Quill owns the toolbar DOM; this target lets Vue insert the toolbar-start slot into it.
 const handleReady = quill => {
   toolbarTarget.value = quill.getModule('toolbar')?.container.querySelector('.ql-customButton1')?.parentElement;
 };
@@ -116,7 +117,7 @@ const editorOptions = computed(() => {
   };
 });
 
-// Function to emit update event
+// Rebuild separator-based paragraphs without stripping inline formatting such as bold.
 const handleUpdate = (content) => {
   if (!props.breakDelimeter || !content) {
     emit('update:modelValue', content.replace(/<\/p><p>/g, '')); // Yep delete this way. Not util.delete_all_linebreaks(content)
@@ -149,11 +150,8 @@ const handleUpdate = (content) => {
   // 4. Clean up any empty paragraphs.
   newContent = newContent.replace(/<p><\/p>/g, '').replace(/<p>\s*<\/p>/g, '');   
 
-  // 5. Only emit an update if the content has actually changed.
-  // This is crucial to prevent infinite loops.
-  // A simple length check is a heuristic. A better way is to compare normalized HTML.
+  // Emit only normalized changes to avoid a Quill/v-model feedback loop.
   if (newContent !== content) {
-    // console.log('New content with break delimiters applied:', newContent); debugger
     emit('update:modelValue', newContent);
   }
 };

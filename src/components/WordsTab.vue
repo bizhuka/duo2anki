@@ -5,11 +5,8 @@
           <ActionButton :icon="hasDuolingoPage ? 'mdi-download' : 'mdi-open-in-new'"
             :tooltipText="hasDuolingoPage ? util.getText('Load Words') : util.getText('Open Words Page')" color="primary"
             :loading="loadingButton" @click="loadWords" />
-          <ActionButton v-if="isDuolingo" icon="mdi-chat-question-outline" :tooltipText="util.getText('Fill Contexts')" color="secondary"
-            :loading="loadingTable" @click="openContextDialog" />
-          <ActionButton v-if="!isDuolingo" icon="mdi-translate" :tooltipText="util.getText('Translate words')" color="primary"
-            :loading="translatingWords" :disabled="!db_words.length || loadingTable || loadingButton"
-            @click="$refs.translateWordsDialog.openTranslationDialog()" />
+          <ActionButton icon="mdi-chat-question-outline" :tooltipText="util.getText('context_generateTitle')" color="secondary"
+            :loading="loadingTable" :disabled="!courseWords.length || loadingButton" @click="openContextDialog" />
           <ActionButton icon-only :icon="allCourseWordsArchived ? 'mdi-archive-arrow-up-outline' : 'mdi-archive-arrow-down-outline'"
             :tooltipText="util.getText(allCourseWordsArchived ? 'Unarchive &quot;{0}&quot;' : 'Archive &quot;{0}&quot;', [courseName])"
             :color="allCourseWordsArchived ? 'success' : 'error'"
@@ -89,21 +86,16 @@
       :optionsData="optionsData" />
     <ConfirmDialog ref="confirmDialog" :optionsData="optionsData" />
     <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"/>
-    <TranslateWordsDialog ref="translateWordsDialog" :optionsData="optionsData" :saveOptions="saveOptions"
-      :dbProxy="dbProxy" :showMessage="showMessage" @refresh-words="$emit('refresh-words')"
-      @update:loading="translatingWords = $event" />
   </div>
 </template>
 
 <script>
 import { util } from '../lib/util.js';
 import { processContexts } from '../lib/contextProcessor.js';
-import TranslateWordsDialog from './TranslateWordsDialog.vue';
 
 const DUOLINGO_WORDS_URL = 'https://www.duolingo.com/practice-hub/words';
 
 export default {
-  components: { TranslateWordsDialog },
   props: {
     db_words: {
       type: Array,
@@ -136,7 +128,6 @@ export default {
       itemsPerPage: 10,
       loadingButton: false,
       loadingTable: false,
-      translatingWords: false,
       hasDuolingoPage: false,
       util: util, // Expose util to the template
     };
@@ -316,7 +307,7 @@ export default {
         const newWord = wordsWithContext[0];
         newWord.course_id = util.options.current_course_id;
         newWord.targetLang = course_info.targetLang;
-        newWord.sourceLang = course_info.sourceLang;
+        newWord.sourceLang ||= course_info.sourceLang || this.optionsData.translation_to;
 
         this.$refs.editDialog.methods.add_new_word(newWord);
       });

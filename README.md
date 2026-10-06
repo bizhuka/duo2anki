@@ -11,7 +11,13 @@ The Reader Import tab accepts both databases in the same drop area and detects t
 - Kindle: `Kindle/system/vocabulary/vocab.db`
 - KOReader: `Storage/koreader/settings/vocabulary_builder.sqlite3`
 
-Each reader has a separate course. Imports populate Front, Context (with the looked-up form in bold), and Hint/Transcription (book title). Reimporting the same file skips duplicate contexts. KOReader databases have no language metadata; select the source language in the translation or context dialog.
+Every import opens an inline book-language panel at the bottom of the tab. Kindle defaults come from `BOOK_INFO.lang`; KOReader books require language selection. Use Skip book to exclude an entire book, or edit its title to shorten the hint for new words. Skipped books do not require a language. All pending data stays in JavaScript memory until at least one book is included, every included book has a valid language, and Import is pressed. Cancel saves nothing.
+
+Courses are grouped by language and reader, for example `fr_kindle`, `en_kindle`, and `fr_koreader`. Identical words merge only within the same course. New entries contain Front, Context (with the looked-up form in bold), and a separate Hint field containing the edited book names. Transcription is reserved for pronunciation and starts empty. Book IDs and language assignments are not retained. Reimports merge **Context** and replace **Hint** with the current imported book names; existing transcription, translations, images, language fields, and review progress remain unchanged. Identical contexts are not duplicated. Previously imported book names stored in Transcription are not automatically moved or cleared.
+
+`targetLang` is the fixed book/word language (`FROM_LANGUAGE`); `sourceLang` records the destination of a successful translation (`TO_LANGUAGE`). The generation dialog locks From to the course language while To remains editable. Reader imports require only the book language, not a translation destination. Database version 2 and its indexes are unchanged; word plus course is the logical unique key enforced by the importer.
+
+Readers and Duolingo use the same generation dialog. Reader requests include words missing a marked translation, context, or enabled transcription. `replace_context_for_reader` defaults to false: existing book examples and their HTML are preserved while translations/transcriptions are generated. Enable Overwrite existing context to replace book examples, including already completed words. Missing reader contexts are always filled; Duolingo generation always replaces the selected words' contexts. The retired Azure button, dialog component, and API implementations have been removed.
 
 ## Google Images Autofill
 Open a word's image search, then invoke the extension's toolbar button or Alt+D while the Google Images tab is active. This grants temporary access through `activeTab`, without adding Google host permissions. With the edit dialog open, the first loaded result fills and saves an empty image field, including during subsequent same-origin searches from word navigation. Existing images are never overwritten.
@@ -20,16 +26,18 @@ The current base64 image source is retained when available. Canvas conversion is
 
 ## Anki Card Types and Reimports
 Choose Direct, Reverse, or Listening before exporting. Each mode uses the same vocabulary list but produces its own deck and note type, with one card per word:
-- Direct (Recognition): word and word audio on the question; translation, context, and context-only audio on the answer.
-- Reverse: the first two translation alternatives on the question, with no audio; word, full translation, context, and combined word/context audio on the answer.
-- Listening: combined word/context audio only on the question (autoplay); word, translation, context, and the question's replay button on the answer (no second autoplay).
+- Direct (Recognition): word, transcription, book-name hint, and word audio on the question; translation, context, and context-only audio on the answer.
+- Reverse: the first two translation alternatives and book-name hint on the question, with no audio or transcription; Front followed by Transcription, hint, full translation, context, and combined word/context audio on the answer.
+- Listening: combined word/context audio first (autoplay), followed by the book-name hint on the question; word, transcription, translation, context, and the question's replay button/hint on the answer (no second autoplay).
 
-Direct retains the original deck name, first six field positions, and deck/model IDs, and appends ContextSound and TtsLanguage. Reverse and Listening retain ReversePrompt and CombinedSound in their existing positions and append TtsLanguage. They add ` - Reverse` or ` - Listening` to the deck and note-type names, use distinct fixed ID offsets, and start new. Reverse requires a nonempty translation; Listening requires a valid word language for audio. Learning progress can be exported only in Direct mode.
+All modes append a separate Hint field. The obsolete TtsLanguage field is no longer exported: the locale is written directly into the audio templates. Note GUIDs and deck/model identities remain stable, but the field layout changes. Back up before reimporting and use Update note types: Always for the revised templates. Hint is editable in the word editor; Transcription is a read-only HTML preview beside Front. Generated pronunciation updates only Transcription.
 
-All three `exportWith...` filters have checkboxes in the Anki tab and default to true: context, translations, and images. The translations filter requires both `hasTranslation === true` and a nonempty trimmed Back field. Enabled filters apply together to both Duolingo and reader courses. Uncheck any requirements you do not need; saved checkbox choices are retained.
+For existing Duolingo courses, Direct retains the original deck name, first six field positions, and deck/model IDs, and appends ContextSound and Hint. Reverse and Listening retain ReversePrompt and CombinedSound in their existing positions, followed by Hint. They add ` - Reverse` or ` - Listening` to the deck and note-type names, use distinct fixed ID offsets, and start new. New language-specific reader courses have separate reader/language/mode deck names, note types, and stable hashed deck/model IDs. Their GUIDs include the full course ID, so Kindle and KOReader notes do not merge. Reverse requires a nonempty translation; Listening requires a valid course language for audio. Learning progress can be exported only in Direct mode.
+
+Context and image export filters have checkboxes and default to true. Translations are mandatory in every mode and course: `hasTranslation === true` and meaningful nonempty Back text are required. The translation checkbox is permanently checked/disabled with an explanatory hint; the old `exportWithTranslationsOnly` option is removed and old saved false values cannot bypass the requirement. Export is disabled when no eligible words remain. Context and image requirements can still be unchecked; saved choices are retained.
 
 ### Built-in Anki TTS
-Exports store speech text from `util.get_sound_text`, rather than audio URLs or MP3 files. Browser playback still uses `get_sound_url` and the selected provider, with Responsive Voice as the default. Azure Microsoft TTS is commented out; a saved Azure provider choice falls back to Responsive Voice when options are loaded. Other saved provider choices are retained. The `collection_media` setting and checkbox have been removed; the old `exportSound` function remains commented out in `Anki.vue` for reference.
+Exports store speech text from `util.get_sound_text`, rather than audio URLs or MP3 files. Browser playback still uses `get_sound_url` and the selected provider, with Responsive Voice as the default. Retired Azure TTS and legacy media-export implementations have been removed. Unsupported saved provider choices fall back to Responsive Voice when options are loaded. Other saved provider choices are retained.
 
 - Sound: Direct's FRONT_WORD question text.
 - ContextSound: Direct's CONTEXT_ONLY answer text, stored separately from the displayed Context.
@@ -40,9 +48,9 @@ Speech text uses the same selection as browser playback: the trimmed Front word,
 
 Templates use Anki's native TTS block syntax, for example:
 ```
-{{#TtsLanguage}}{{#Sound}}[anki:tts lang={{TtsLanguage}}]{{Sound}}[/anki:tts]{{/Sound}}{{/TtsLanguage}}
+{{#Sound}}[anki:tts lang=fr_FR speed=1]{{Sound}}[/anki:tts]{{/Sound}}
 ```
-TtsLanguage comes from each word's target language. Explicit regions are retained; bare language codes are expanded to a default locale (for example, `en` to `en_US`). This supports mixed-language reader imports without fixing the entire note type to one language. A word without a valid language remains silent in Direct/Reverse and is excluded from Listening.
+The inline locale is shared by the note type and comes only from the selected `course_id`: `fr_en` and `fr_kindle` use `fr_FR`, while `en_koreader` uses `en_US`. Individual word languages and regional variants do not override the course voice. A course with no valid locale remains silent in Direct/Reverse and cannot produce a Listening export. The locale precedes the saved speech speed in every relevant question/answer TTS block.
 
 This block syntax requires **Anki 2.1.50+, AnkiMobile 2.0.84+, or AnkiDroid 2.17+**. Install a suitable voice on each reviewing device; Linux needs an add-on supplying voices. To inspect installed voices, temporarily add `{{tts-voices:}}` to a template. For a fixed-language note type, the equivalent single-field syntax is `{{tts en_US:Sound}}`; voices and speed can be specified in the template if desired. See the [Anki TTS manual](https://docs.ankiweb.net/templates/fields.html#text-to-speech-for-multiple-fields-and-static-text).
 

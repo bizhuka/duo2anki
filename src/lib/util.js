@@ -1,7 +1,6 @@
 import { get_translated_text, getDuolingoCourseLanguage } from "./i18n/translation.js";
 import { reactive } from "vue";
 import { ENABLE_DEBUG_LOGGING } from "./ai.js";
-// import { buildTtsUrl, normalizeAzureLanguage } from "./ai.js";
 
 export const util = {
   options: reactive({
@@ -10,6 +9,9 @@ export const util = {
     // Context
     ai_model: 'chatgpt',
     prompt_prefix: "",
+    include_transcription: false,
+    replace_context_for_reader: false,
+    transcription_prompt: "",
     request_count: 1,
     words_per_request: 10,
     add_2_back: true,
@@ -24,7 +26,6 @@ export const util = {
     ankiExportMode: 'direct',
     exportWithContextOnly: true,
     includeScheduleInformation: true,
-    exportWithTranslationsOnly: true,
     exportWithImagesOnly: true,
 
     // Game Notification
@@ -38,8 +39,19 @@ export const util = {
     koreader: { name: 'KOReader', ankiIdOffset: 2000000 },
   },
 
+  getReaderCourseInfo(courseId) {
+    const [targetLang, reader, extra] = (courseId || '').split('_');
+    if (extra || !/^[a-z]{2,3}$/.test(targetLang) || !Object.hasOwn(this.readerCourses, reader)) return null;
+    return { ...this.readerCourses[reader], reader, targetLang, lang_id: targetLang.toUpperCase() };
+  },
+
+  createReaderCourseId(reader, language) {
+    if (!Object.hasOwn(this.readerCourses, reader) || !/^[a-z]{2,3}$/.test(language)) return '';
+    return `${language}_${reader}`;
+  },
+
   isReaderCourse(courseId) {
-    return Object.hasOwn(this.readerCourses, courseId);
+    return Object.hasOwn(this.readerCourses, courseId) || !!this.getReaderCourseInfo(courseId);
   },
 
   CONFIRM_RESULT: {
@@ -66,11 +78,17 @@ export const util = {
   TTS_PROVIDER: {
     RESPONSIVE_VOICE: 'Responsive Voice',
     GOOGLE: 'Google',
-    // AZURE_MICROSOFT: 'Azure Microsoft',
   },
 
   getCurrentCourse() {
-    const course_id = this.options.current_course_id;
+    return this.getCourseName(this.options.current_course_id);
+  },
+
+  getCourseName(course_id) {
+    const reader = this.getReaderCourseInfo(course_id);
+    if (reader) {
+      return `${reader.name} - ${getDuolingoCourseLanguage(reader.targetLang) || reader.targetLang}`;
+    }
     if (this.isReaderCourse(course_id)) return this.readerCourses[course_id].name;
     return course_id ? getDuolingoCourseLanguage(this.get_course_info(course_id).lang_id) || course_id : '';
   },
@@ -90,10 +108,21 @@ export const util = {
         .replaceAll('&gt;', '>')
   },
 
+  normalizeTranscription(text) {
+    return (text || '').replace(/\[[^\]\r\n]+\]/g, transcription => this.unescape_html(transcription)
+      .replace(/<\/?(?:b|strong)(?:\s[^>]*)?>/gi, '**')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>'));
+  },
+
   delete_all_tags: function (text) {
     if (!text) return "";
     // Or   /<[^>]*>/g  ?
     return text.replace(/<\/?[^>]+(>|$)/g, "").trim();
+  },
+
+  hasText(text) {
+    return !!this.unescape_html(this.delete_all_tags(text)).trim();
   },
 
   mergeWithReturn(existingText, addition, deleteBrackets = false, separator = ' ⏎ ') {
@@ -181,9 +210,6 @@ export const util = {
       case this.TTS_PROVIDER.GOOGLE:
         return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${item.targetLang}&q=${encodeURIComponent(wholeText)}`;
 
-      // case this.TTS_PROVIDER.AZURE_MICROSOFT:
-      //   const languageCode = normalizeAzureLanguage(item.targetLang);
-      //   return buildTtsUrl(languageCode, wholeText);
     }
     return null;
   },
@@ -220,6 +246,8 @@ export const util = {
   },
 
   get_course_info: function (course_id) {
+    const reader = this.getReaderCourseInfo(course_id);
+    if (reader) return reader;
     if (!course_id || this.isReaderCourse(course_id)) return {};
     const delimiter = course_id.includes("-") ? "-" : "_";
     const [targetLang, sourceLang] = course_id.split(delimiter);

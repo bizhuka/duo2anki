@@ -51,6 +51,8 @@ class DbProxy extends Dexie {
 
   async _set_dafaults(word) { 
     word.hasTranslation = word.hasTranslation ?? null;
+    word.hint = word.hint ?? '';
+    word.transcription = word.transcription ?? '';
     word.status = word.status || STATUS.LEARNING;
     word.ease_factor = word.ease_factor || ( STARTING_EASE / 100 );
     word.interval = word.interval || 0;
@@ -108,6 +110,34 @@ class DbProxy extends Dexie {
 
   async getCourseIds() {
     return this.words.orderBy('course_id').uniqueKeys();
+  }
+
+  async importReaderWords(words) {
+    return this.transaction('rw', this.words, this.word_meta, async () => {
+      let added = 0;
+      let updated = 0;
+      for (const word of words) {
+        const course = util.getReaderCourseInfo(word.course_id);
+        if (!course || !word.targetLang || word.targetLang.split('-')[0] !== course.targetLang || !word.front?.trim()) {
+          throw new Error(util.getText('reader_languagesRequired'));
+        }
+        const existing = await this.words.where('[course_id+front]').equals([word.course_id, word.front]).first();
+        if (existing) {
+          const context = this._addLineBreaks(util.mergeWithReturn((existing.context || '').replace(/<br\s*\/?>/gi, ''), word.context));
+          const hint = word.hint || '';
+          if (context !== existing.context || hint !== (existing.hint || '')) {
+            await this.words.update(existing.id, { context, hint });
+            updated++;
+          }
+        } else {
+          const prepared = { ...word, context: this._addLineBreaks(word.context) };
+          await this._set_dafaults(prepared);
+          await this.words.add(prepared);
+          added++;
+        }
+      }
+      return { added, updated };
+    });
   }
 
   async getCourseWordCounts(courseIds) {
@@ -177,7 +207,11 @@ class DbProxy extends Dexie {
 
   async updateWordsContext(wordsToProcess) {
     for (const word of wordsToProcess) {
-      await this.updateWord(word);
+      if (util.isReaderCourse(word.course_id)) {
+        await this.words.update(word.id, { ...word });
+      } else {
+        await this.updateWord(word);
+      }
     }
   }
 

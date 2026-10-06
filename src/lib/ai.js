@@ -1,5 +1,7 @@
+import { normalizeLanguageCode } from './i18n/translation.js';
+
 export const ENABLE_DEBUG_LOGGING = false;
-export const DEFAULT_AZURE_LANGUAGE = "en";
+export const DEFAULT_LANGUAGE = "en";
 
 function getApiHost(isLocal) {
   return isLocal ? "http://localhost:3000" : "https://duo2anki-backend.vercel.app";
@@ -24,49 +26,8 @@ export function getTranslateUrl(isLocal = isLocalExtension()) {
   return `${getApiHost(isLocal)}/translate`;
 }
 
-export function getAzureTranslateUrl(isLocal = isLocalExtension()) {
-  return `${getApiHost(isLocal)}/azure/translate`;
-}
-
-export async function translateWithAzure(texts, to, from, isLocal = isLocalExtension()) {
-  if (!texts.length) return [];
-  const response = await fetch(getAzureTranslateUrl(isLocal), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ texts, to, from }),
-  });
-  const result = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(result?.error || `Azure translation failed with status: ${response.status}`);
-  }
-  if (!Array.isArray(result) || result.length !== texts.length ||
-      result.some(translations => !Array.isArray(translations) ||
-        translations.some(translation => typeof translation?.word !== 'string'))) {
-    throw new Error('Azure returned an invalid translation response.');
-  }
-  return result.map(translations => [...new Set(translations.map(translation => translation.word.trim()).filter(Boolean))].join('; '));
-}
-
-// Azure TTS is disabled; retained for reference.
-// export function buildTtsUrl(language, text, isLocal = isLocalExtension()) {
-//   const host = getApiHost(isLocal);
-//   return `${host}/tts?language=${language}&text=${encodeURIComponent(text)}`;
-// }
-
-export function normalizeAzureLanguage(targetLang) {
-  const raw = (targetLang || "").trim();
-  if (!raw) {
-    return DEFAULT_AZURE_LANGUAGE;
-  }
-
-  const normalized = raw.replace(/_/g, "-").toLowerCase();
-  const [language, region] = normalized.split("-");
-
-  if (!language) {
-    return DEFAULT_AZURE_LANGUAGE;
-  }
-
-  return region ? `${language}-${region}` : language;
+export function normalizeLanguage(targetLang) {
+  return normalizeLanguageCode(targetLang) || DEFAULT_LANGUAGE;
 }
 
 export async function process_with_GROQ(wordsToProcess, optionsData) {

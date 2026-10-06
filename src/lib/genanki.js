@@ -66,6 +66,12 @@ export function getStableNoteGuid(courseId, front, mode = 'direct') {
     return guid || BASE91_TABLE[0];
 }
 
+export function getReaderAnkiId(courseId, mode, role) {
+    const digest = sha256.array(JSON.stringify(['duo2anki-reader', courseId, mode, role]));
+    const hash = digest.slice(0, 6).reduce((value, byte) => value * 256 + byte, 0);
+    return 1000000000000 + hash;
+}
+
 const MODEL_STD = 0
 const MODEL_CLOZE = 1
 

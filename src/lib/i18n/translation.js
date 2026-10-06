@@ -282,8 +282,20 @@ export const duolingoCourses = [
     }
 ];
 
+const languageCodeAliases = {
+    ua: 'uk', no: 'nb', eng: 'en', fra: 'fr', fre: 'fr', deu: 'de', ger: 'de',
+    spa: 'es', ita: 'it', por: 'pt', pol: 'pl', tur: 'tr', rus: 'ru', ukr: 'uk',
+    nld: 'nl', dut: 'nl', jpn: 'ja', zho: 'zh', chi: 'zh', kor: 'ko',
+};
+
+export function normalizeLanguageCode(language) {
+    const [code, ...localeParts] = (language || '').trim().replaceAll('_', '-').toLowerCase().split('-');
+    return [languageCodeAliases[code] || code, ...localeParts].join('-');
+}
+
 export function getDuolingoCourseLanguage(lang_id) {
-    const course = duolingoCourses.find(course => course.code === (lang_id === 'UK' ? 'UA' : lang_id));
+    const code = normalizeLanguageCode(lang_id).split('-')[0];
+    const course = duolingoCourses.find(course => normalizeLanguageCode(course.code).split('-')[0] === code);
     return course ? course.language : null;
 }
 

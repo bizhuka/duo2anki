@@ -53,6 +53,7 @@ const error = ref('');
 const errorVisible = ref(false);
 const review = reactive({
   show: false, word: null, back: '', context: '',
+  sourceLang: '',
   replaceTranslation: true, replaceContext: true,
 });
 const canSave = computed(() => review.replaceTranslation || review.replaceContext);
@@ -68,7 +69,8 @@ async function generate() {
   errorVisible.value = false;
   try {
     const from = translationLanguageName(wordLanguage(word));
-    const to = translationLanguageName(props.optionsData.translation_to);
+    const sourceLang = props.optionsData.translation_to;
+    const to = translationLanguageName(sourceLang);
     if (!from || !to) throw new Error(util.getText('example_missingLanguages'));
     const currentExample = util.get_sound_text(word, util.SOUND_MODE.CONTEXT_ONLY) || '';
     const prompt_prefix = util.getText('context_defaultPrompt')
@@ -82,7 +84,7 @@ async function generate() {
       throw new Error(util.getText('example_invalidResult'));
     }
     Object.assign(review, {
-      word, back: result.back, context: result.context,
+      word, back: result.back, context: result.context, sourceLang,
       replaceTranslation: true, replaceContext: true, show: true,
     });
     if (props.soundMode !== util.SOUND_MODE.OFF) {

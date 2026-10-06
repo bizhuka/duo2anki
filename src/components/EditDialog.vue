@@ -15,34 +15,38 @@
              util.getText('addNewWord'):
              util.getText('Edit Word - №') + dialog.editingIndex + 1 }}
         <v-btn icon="mdi-close" variant="text" density="compact" size="x-large" @click="methods.closeDialog"
-          style="position: absolute; top: 8px; right: 8px;"></v-btn>
+          style="position: absolute; top: 0.5rem; right: 0.5rem;"></v-btn>
       </v-card-title>
       <v-card-text style="padding-top: 0.2rem; padding-bottom: 0; overflow-y: auto; max-height: 70vh;" density="compact">
         <v-col style="padding-top: 0;padding-bottom: 0; display: flex; flex-direction: column; flex-grow: 1;">
 
-          <v-text-field v-model="dialog.editingWord.front" :label="util.getText('Word')" v-if="dialog.showRichText" density="compact"
-            hide-details readonly="true" class="mb-2"> <!-- Added margin-bottom -->
-            <!-- Play sound with the word ONLY -->
-            <template v-slot:append-inner v-if="!dialog.editingWord.archived">
-              <ReplaySoundButton ref="frontSoundButton"
-                :card="dialog.editingWord"
-                :modes="frontSoundModes"
-              />
-            </template>
-            <!-- Search for image button -->
-            <template v-slot:append v-if="!dialog.editingWord.archived">
-              <v-tooltip location="top" max-width="280" :open-delay="1000">
-                <template v-slot:activator="{ props }">
-                  <v-icon v-bind="props" color="primary" @click="methods.findImageFromFront">mdi-image-search</v-icon>
-                </template>
-                <div>{{ util.getText('Find Image (F4)') }}</div>
-                <div style="white-space: pre-line;">{{ util.getText('image_autoFillHint') }}</div>
-              </v-tooltip>
-            </template>
-          </v-text-field>
+          <!-- Front and pronunciation are display-only; the learning hint remains editable. -->
+          <div v-if="dialog.showRichText" class="word-field mb-2">
+            <div class="word-header">
+              <div class="v-label">{{ util.getText('Word') }}</div>
+              <div v-if="!dialog.editingWord.archived" class="word-tools">
+                <ReplaySoundButton ref="frontSoundButton"
+                  :card="dialog.editingWord"
+                  :modes="frontSoundModes"
+                />
+                <v-tooltip location="top" max-width="17.5rem" :open-delay="1000">
+                  <template v-slot:activator="{ props }">
+                    <v-icon v-bind="props" color="primary" @click="methods.findImageFromFront">mdi-image-search</v-icon>
+                  </template>
+                  <div>{{ util.getText('Find Image (F4)') }}</div>
+                  <div style="white-space: pre-line;">{{ util.getText('image_autoFillHint') }}</div>
+                </v-tooltip>
+              </div>
+            </div>
+            <div class="word-line">
+              <span class="word-front">{{ dialog.editingWord.front }}</span>
+              <span v-if="dialog.editingWord.transcription" class="transcription-preview text-medium-emphasis"
+                role="note" :aria-label="util.getText('Transcription')" v-html="dialog.editingWord.transcription" />
+            </div>
+          </div>
 
-          <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.transcription" :label="util.getText('hintOrTranscription')"
-            min-height="1.3rem" class="mb-2" :optionsData="optionsData" :hideToolbar="true" density="compact"/>
+          <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.hint" :label="util.getText('Hint')"
+            min-height="1rem" class="hint-editor mb-1" :optionsData="optionsData" :hideToolbar="true" density="compact"/>
 
           <!-- Translation - Find back image-->
           <RichTextEditor v-if="dialog.showRichText && !dialog.editingWord.archived" v-model="dialog.editingWord.back" :label="util.getText('Translation')"
@@ -54,7 +58,7 @@
                 <span class="v-label">{{ util.getText('Translation') }}</span>
                 <v-checkbox
                   :model-value="dialog.editingWord.hasTranslation === true"
-                  @update:model-value="dialog.editingWord.hasTranslation = $event"
+                  @update:model-value="methods.saveTranslationStatus"
                   :label="util.getText('Mark as translated')" density="compact" hide-details class="flex-grow-0" />
               </div>
             </template>
@@ -212,9 +216,10 @@ export default {
 
         let prevValue = dialog.prevWord[key];
         let currentValue = dialog.editingWord[key];
-        if (key === 'context' || key === 'back' || key === 'transcription') {
-          prevValue = util.unescape_html(util.delete_all_linebreaks(prevValue));
-          currentValue = util.unescape_html(util.delete_all_linebreaks(currentValue));
+        if (key === 'context' || key === 'back' || key === 'transcription' || key === 'hint') {
+          // Quill can rewrite wrappers and bold tags without changing the displayed content.
+          prevValue = util.unescape_html(util.delete_all_linebreaks(prevValue)).replace(/<(\/?)strong>/gi, '<$1b>');
+          currentValue = util.unescape_html(util.delete_all_linebreaks(currentValue)).replace(/<(\/?)strong>/gi, '<$1b>');
         }
         if(prevValue !== currentValue){
            console.log(`Property ${key} changed: `);
@@ -306,7 +311,10 @@ export default {
         dialog.editingWord = setWord ? {
           image: null,
           context: '<p></p>', // TODO Initialize context to an empty paragraph
-          ...setWord
+          ...setWord,
+          hint: setWord.hint || '',
+          transcription: util.normalizeTranscription(setWord.transcription),
+          hasTranslation: setWord.hasTranslation ?? null,
         } : null;
 
         dialog.show = true; // Show the dialog
@@ -395,21 +403,29 @@ export default {
         dialog.editingWord = null;
       },
 
-      saveGeneratedExample({ word, back, context, replaceTranslation, replaceContext }) {
+      saveGeneratedExample({ word, back, context, sourceLang, replaceTranslation, replaceContext }) {
         if (!dialog.show || dialog.editingWord !== word || word.archived ||
             (!replaceTranslation && !replaceContext)) return;
         if (replaceTranslation) {
           word.back = back;
           word.hasTranslation = true;
+          if (sourceLang) word.sourceLang = sourceLang;
         }
         if (replaceContext) word.context = context;
+        methods.saveEdit();
+      },
+
+      saveTranslationStatus(value) {
+        if (!dialog.editingWord) return;
+        dialog.editingWord.hasTranslation = value === true;
         methods.saveEdit();
       },
 
       saveEdit() {
         if (dialog.editingWord) {
           emit('save', dialog.editingWord);
-          dialog.prevWord = dialog.editingWord; // Update previous word to current after saving
+          // An independent baseline keeps later edits detectable after checkbox autosaves.
+          dialog.prevWord = { ...dialog.editingWord };
           // Do not close closeDialog();
         }
       },
@@ -487,3 +503,90 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.word-header, .word-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.word-header {
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.word-tools :deep(.v-icon) {
+  font-size: 1.5rem;
+  width: 2rem;
+  height: 2rem;
+}
+
+.word-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.word-front {
+  flex: 0 1 auto;
+  max-width: 50%;
+  min-width: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.word-front:only-child {
+  max-width: 100%;
+}
+
+.transcription-preview {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.transcription-preview :deep(p) {
+  display: inline;
+  margin: 0;
+}
+
+.transcription-preview :deep(b), .transcription-preview :deep(strong) {
+  font-weight: 800;
+}
+
+.hint-editor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.5rem;
+}
+
+.hint-editor :deep(.v-label) {
+  margin-bottom: 0;
+  font-size: 0.75rem;
+}
+
+.hint-editor :deep(.ql-container) {
+  font-size: 0.875rem;
+  line-height: 1.3;
+}
+
+.hint-editor :deep(.ql-editor) {
+  padding: 0.25rem 0.5rem;
+  min-height: 0;
+  max-height: 3rem;
+  overflow-y: auto;
+}
+
+.hint-editor :deep(.ql-editor.ql-blank::before) {
+  left: 0.5rem;
+  right: 0.5rem;
+}
+</style>

@@ -5,7 +5,7 @@
       <ActionButton icon="mdi-upload"
         :tooltipText="util.getText('Anki')"
         color="success"
-        :disabled="!db_words.length || exportingToAnki"
+        :disabled="!canExport || exportingToAnki"
         :loading="exportingToAnki"
         @click="triggerExport"/>
     </div>
@@ -47,14 +47,36 @@
               ></v-text-field>
             </v-col>
             <v-col cols="12">
-              <v-checkbox
-                v-model="optionsData.includeScheduleInformation"
-                :disabled="exportingToAnki || exportMode.key !== 'direct'"
-                :label="util.getText('includeScheduleInformation')"
-                @update:model-value="saveOptions"
-                density="compact"
-                hide-details
-              ></v-checkbox>
+              <v-tooltip location="top">
+                <template v-slot:activator="{ props }">
+                  <div v-bind="props" tabindex="0">
+                    <v-checkbox
+                      v-model="optionsData.includeScheduleInformation"
+                      :disabled="exportingToAnki || exportMode.key !== 'direct'"
+                      :label="util.getText('includeScheduleInformation')"
+                      @update:model-value="saveOptions"
+                      density="compact"
+                      hide-details
+                    ></v-checkbox>
+                  </div>
+                </template>
+                <span>{{ util.getText('anki_scheduleInfoTooltip') }}</span>
+              </v-tooltip>
+
+              <v-tooltip location="top">
+                <template v-slot:activator="{ props }">
+                  <div v-bind="props" tabindex="0">
+                    <v-checkbox
+                      :model-value="true"
+                      disabled
+                      :label="util.getText('Export with translations only')"
+                      density="compact"
+                      hide-details
+                    ></v-checkbox>
+                  </div>
+                </template>
+                <span>{{ util.getText('anki_translationRequired') }}</span>
+              </v-tooltip>
 
               <v-tooltip location="top">
                 <template v-slot:activator="{ props }">
@@ -67,16 +89,8 @@
                     hide-details
                   ></v-checkbox>
                 </template>
-                <span v-html="util.getText('anki_exportContextTooltip')"></span>
+                <span v-html="util.getText('anki_exportContextTooltip', [util.getText('context_generateTitle')])"></span>
               </v-tooltip>
-
-              <v-checkbox
-                v-model="optionsData.exportWithTranslationsOnly"
-                :label="util.getText('Export with translations only')"
-                @update:model-value="saveOptions"
-                density="compact"
-                hide-details
-              ></v-checkbox>
               <v-checkbox
                 v-model="optionsData.exportWithImagesOnly"
                 :label="util.getText('Export with images only')"
@@ -131,9 +145,8 @@
 </script>
 
 <script>
-import { Model, Deck, Note, Package as AnkiPackage, getStableNoteGuid } from '../lib/genanki.js';
-// import JSZip from "jszip";
-// import { saveAs } from "file-saver";
+import { Model, Deck, Note, Package as AnkiPackage, getStableNoteGuid, getReaderAnkiId } from '../lib/genanki.js';
+import { normalizeLanguageCode } from '../lib/i18n/translation.js';
 
 const EXPORT_MODES = {
   direct: { key: 'direct', label: 'Direct', suffix: '', idOffset: 0, fields: ['Sound', 'ContextSound'], required: [0] },
@@ -172,6 +185,9 @@ export default {
   },
   
   computed: {
+    canExport() {
+      return Array.isArray(this.getValidWordsForExport());
+    },
     exportModes() {
       return Object.values(EXPORT_MODES);
     },
@@ -203,11 +219,6 @@ export default {
   },
   
   methods: {
-    // Unused helper; retained for reference.
-    // _show_error(message){
-    //   this.showMessage(message, 'error');
-    // },
-
     get_id_from_name(name) {
       const mode = Object.values(EXPORT_MODES).find(mode => mode.suffix && name.endsWith(mode.suffix)) || EXPORT_MODES.direct;
       const baseName = mode.suffix ? name.slice(0, -mode.suffix.length) : name;
@@ -220,8 +231,7 @@ export default {
     getTtsLanguage(targetLang) {
       if (!targetLang?.trim()) return '';
       try {
-        const code = targetLang.trim().replaceAll('_', '-')
-          .replace(/^ua(?=-|$)/i, 'uk').replace(/^no(?=-|$)/i, 'nb');
+        const code = normalizeLanguageCode(targetLang);
         const locale = new Intl.Locale(code).maximize();
         return [locale.language, locale.region].filter(Boolean).join('_');
       } catch {
@@ -240,9 +250,7 @@ export default {
       if (this.optionsData.exportWithImagesOnly) {
         words = words.filter(word => word.image && word.image.trim() !== '');
       }
-      if (this.optionsData.exportWithTranslationsOnly) {
-        words = words.filter(word => word.hasTranslation === true && word.back && word.back.trim() !== '');
-      }
+      words = words.filter(word => word.hasTranslation === true && util.hasText(word.back));
       if (this.optionsData.exportWithContextOnly) {
         words = words.filter(word => word.context && word.context.trim() !== '');
       }
@@ -250,8 +258,9 @@ export default {
       if (this.exportMode.key === 'reverse') {
         words = words.filter(word => util.getTranslationAlternatives(word.back).length > 0);
       } else if (this.exportMode.key === 'listening') {
-        words = words.filter(word => this.getTtsLanguage(word.targetLang) &&
-          util.get_sound_text(word, util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT));
+        const courseLanguage = util.get_course_info(this.optionsData.current_course_id).targetLang;
+        words = this.getTtsLanguage(courseLanguage)
+          ? words.filter(word => util.get_sound_text(word, util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT)) : [];
       }
 
       if (words.length === 0) {
@@ -278,20 +287,25 @@ export default {
       const nodeType = this.nodeType;
       const options = { ...this.optionsData };
       const exportMode = this.exportMode;
-      const modelId = this.get_id_from_name(nodeType);
+      const reader = util.getReaderCourseInfo(options.current_course_id);
+      const modelId = reader ? getReaderAnkiId(options.current_course_id, exportMode.key, 'model')
+        : this.get_id_from_name(nodeType);
       let db;
       try {
-        const questionContent = `<div>{{Front}}</div><div class="transcription">{{Transcription}}</div>`;
-        const answerContent = (contextAudio = '') => `${questionContent}<hr id=answer><div>{{Back}}</div>{{#Image}}<div><img src="{{Image}}"></div>{{/Image}}${contextAudio}<div class="context">{{Context}}</div>`;
+        // The course defines the shared template voice; words do not override it.
+        const courseLanguage = util.get_course_info(options.current_course_id).targetLang;
+        const language = this.getTtsLanguage(courseLanguage);
+        const questionContent = '<div>{{Front}}</div>{{#Transcription}}<div class="transcription">{{Transcription}}</div>{{/Transcription}}';
+        const hintContent = '{{#Hint}}<div class="hint">{{Hint}}</div>{{/Hint}}';
+        const answerContent = (contextAudio = '', hint = '') => `${questionContent}${hint}<hr id=answer><div>{{Back}}</div>{{#Image}}<div><img src="{{Image}}"></div>{{/Image}}${contextAudio}<div class="context">{{Context}}</div>`;
         const speed = options.ttsSpeed ?? 1;
-        // Native TTS blocks allow a per-note language, including mixed-language reader imports
-        const audio = field => `{{#TtsLanguage}}{{#${field}}}[anki:tts lang={{TtsLanguage}} speed=${speed}]{{${field}}}[/anki:tts]{{/${field}}}{{/TtsLanguage}}`;
+        const audio = field => language ? `{{#${field}}}[anki:tts lang=${language} speed=${speed}]{{${field}}}[/anki:tts]{{/${field}}}` : '';
         const templates = {
-          direct: { name: util.getText('mainTemplate'), qfmt: `${questionContent}${audio('Sound')}`,
-            afmt: answerContent(audio('ContextSound')) },
-          reverse: { name: util.getText('Reverse'), qfmt: `{{#ReversePrompt}}<div>{{ReversePrompt}}</div>{{/ReversePrompt}}`,
-            afmt: answerContent(audio('CombinedSound')) },
-          listening: { name: util.getText('Listening'), qfmt: audio('CombinedSound'),
+          direct: { name: util.getText('mainTemplate'), qfmt: `${questionContent}${hintContent}${audio('Sound')}`,
+            afmt: answerContent(audio('ContextSound'), hintContent) },
+          reverse: { name: util.getText('Reverse'), qfmt: `{{#ReversePrompt}}<div>{{ReversePrompt}}</div>{{/ReversePrompt}}${hintContent}`,
+            afmt: answerContent(audio('CombinedSound'), hintContent) },
+          listening: { name: util.getText('Listening'), qfmt: `${audio('CombinedSound')}${hintContent}`,
             // FrontSide retains the question replay button without queuing answer audio.
             afmt: `{{FrontSide}}${answerContent()}` },
         };
@@ -306,13 +320,15 @@ export default {
             { name: 'Context' },
             { name: 'Transcription' },
           ].concat(exportMode.key === 'direct' ? [{ name: 'ContextSound' }]
-            : [{ name: 'ReversePrompt' }, { name: 'CombinedSound' }], [{ name: 'TtsLanguage' }]),
+            : [{ name: 'ReversePrompt' }, { name: 'CombinedSound' }], [{ name: 'Hint' }]),
           req: [[0, 'all', exportMode.required]],
           tmpls: [templates[exportMode.key]],
-          css: `.card { font-family: arial; font-size: 1.5rem; text-align: center; color: black; background-color: white; }`,
+          css: `.card { font-family: arial; font-size: 1.5rem; text-align: center; color: black; background-color: white; }
+            .hint { font-size: 1rem; opacity: 0.7; margin: 0.5rem 0; overflow-wrap: anywhere; }`,
         });
 
-        const ankiDeck = new Deck(modelId + 1, deckName);
+        const deckId = reader ? getReaderAnkiId(options.current_course_id, exportMode.key, 'deck') : modelId + 1;
+        const ankiDeck = new Deck(deckId, deckName);
         const ankiPackage = new AnkiPackage();
         ankiPackage.addDeck(ankiDeck);
 
@@ -320,31 +336,13 @@ export default {
         ankiPackage.setSqlJs(db);
 
         const audioModes = {
-          Sound: { mode: util.SOUND_MODE.FRONT_WORD, /* suffix: '' */ },
-          ContextSound: { mode: util.SOUND_MODE.CONTEXT_ONLY, /* suffix: '_context' */ },
-          CombinedSound: { mode: util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT, /* suffix: '_combined' */ },
+          Sound: { mode: util.SOUND_MODE.FRONT_WORD },
+          ContextSound: { mode: util.SOUND_MODE.CONTEXT_ONLY },
+          CombinedSound: { mode: util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT },
         };
-        /* Legacy media exporter: disabled in favor of Anki built-in TTS (see README).
-        const exportSound = async (item, mode) => {
-          const soundUrl = util.get_sound_url(item, mode);
-          if (!soundUrl) return '';
-          try {
-            const suffix = Object.values(audioModes).find(audio => audio.mode === mode).suffix;
-            const filename = `${item.targetLang}_${item.id}_${item.front.replace(/[^a-zA-Z0-9-_.]/g, '_')}${suffix}.mp3`;
-            this.showMessage(util.getText('exportingAudioForWord', [item.front]), 'warning');
-            const response = await fetch(soundUrl);
-            if (response.ok) {
-              ankiPackage.addMediaFile(await response.blob(), filename);
-              return filename;
-            }
-          } catch (error) {
-            console.error(`Error fetching sound from ${soundUrl}:`, error);
-          }
-          return soundUrl;
-        };
-        */
 
         for (const item of wordsToExport) { // Use for...of for async iteration
+          // Games supply the original progress; Reverse and Listening start as new cards.
           const scheduleInfo = exportMode.key === 'direct' && options.includeScheduleInformation && item.next_review ? {
               next_review: item.next_review,
               status: item.status,
@@ -370,7 +368,8 @@ export default {
           ];
           if (exportMode.key === 'direct') fields.push(sounds.ContextSound || '');
           else fields.push(reversePrompt, sounds.CombinedSound || '');
-          fields.push(this.getTtsLanguage(item.targetLang));
+          fields.push(item.hint || '');
+          // Editable translations, hints and examples do not change the note's identity.
           const note = new Note(ankiModel, fields, scheduleInfo, null,
             getStableNoteGuid(item.course_id || options.current_course_id, item.front, exportMode.key));
           ankiDeck.addNote(note);
@@ -405,13 +404,6 @@ export default {
   min-width: 0;
   padding: 0 4px;
 }
-
-/* Unused style; retained for reference.
-.error-link {
-  color: white;
-  text-decoration: underline;
-}
-*/
 
 .anki-import-settings table {
   table-layout: fixed;

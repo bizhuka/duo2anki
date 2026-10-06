@@ -3,6 +3,7 @@
         <v-col cols="12" sm="6">
             <v-select :model-value="from" :items="translationLanguages" item-title="title" item-value="value"
                 :label="util.getText('Source language')" density="compact" :disabled="disabled"
+                :readonly="readonlyFrom" :menu-icon="readonlyFrom ? '' : '$dropdown'"
                 :rules="requiredLanguage" required hide-details="auto"
                 @update:model-value="$emit('update:from', $event)" />
         </v-col>
@@ -23,6 +24,7 @@ defineProps({
     from: { type: String, default: '' },
     to: { type: String, default: '' },
     disabled: { type: Boolean, default: false },
+    readonlyFrom: { type: Boolean, default: false },
 });
 defineEmits(['update:from', 'update:to']);
 

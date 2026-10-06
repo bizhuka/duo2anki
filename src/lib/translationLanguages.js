@@ -1,11 +1,10 @@
-import { normalizeAzureLanguage } from './ai.js';
+import { normalizeLanguage } from './ai.js';
 import { duolingoCourses } from './i18n/translation.js';
 import { util } from './util.js';
 
 export function translationLanguage(language) {
     if (!language) return '';
-    const code = normalizeAzureLanguage(language).split('-')[0];
-    return ({ ua: 'uk', no: 'nb' })[code] || code;
+    return normalizeLanguage(language).split('-')[0];
 }
 
 export const translationLanguages = duolingoCourses.map(course => ({

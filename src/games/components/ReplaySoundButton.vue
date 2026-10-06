@@ -51,7 +51,6 @@ const playbackCache = new WeakMap();
 const providers = [
   util.TTS_PROVIDER.RESPONSIVE_VOICE,
   util.TTS_PROVIDER.GOOGLE,
-  // util.TTS_PROVIDER.AZURE_MICROSOFT,
 ];
 
 export default {
@@ -185,10 +184,6 @@ export default {
       this.$emit('sound-mode-changed');
     },
 
-    // Unused placeholder; retained for reference.
-    // replay() {
-    //   // TODO: Implement replay logic if needed
-    // },
   },
 };
 </script>

@@ -2,7 +2,7 @@ import { util } from './util.js';
 import { process_with_GROQ, ENABLE_DEBUG_LOGGING } from './ai.js';
 
 async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew) {
-    // Use a Promise to handle the asynchronous waiting
+    // Chrome runs this function in the AI tab, so its DOM helpers stay nested here.
     return new Promise((resolve, reject) => {
         const isGrok = ai_model === 'grok'; //util.AI_MODEL.GROK;
         if (ENABLE_DEBUG_LOGGING) console.log(`_get_AI_results started. isGrok: ${isGrok}, firstId: ${firstId}, lastId: ${lastId}, expectedLength: ${expectedLength}, wordIsNew: ${wordIsNew}`);
@@ -17,6 +17,16 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
             function _getTextWithLineBreaks(element) {
                 const clone = element.cloneNode(true);
                 clone.querySelectorAll('br').forEach(lineBreak => lineBreak.replaceWith('\n'));
+                // Keep stressed syllables bold inside brackets without altering example text.
+                clone.querySelectorAll('strong, b').forEach(bold => {
+                    const range = document.createRange();
+                    range.selectNodeContents(clone);
+                    range.setEndBefore(bold);
+                    const precedingText = range.toString();
+                    if (precedingText.lastIndexOf('[') > precedingText.lastIndexOf(']')) {
+                        bold.replaceWith(`**${bold.textContent}**`);
+                    }
+                });
                 return clone.textContent || '';
             }
             function _splitAndTrim(str) {
@@ -30,6 +40,7 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
                 : [];
             if (ENABLE_DEBUG_LOGGING) console.log(`Found ${paragraphs.length} paragraphs.`);
 
+            // The prompt and parser share five arrow-separated fields; wait for the complete batch.
             if (paragraphs.length === expectedLength) {
                 const firstP = _getTextWithLineBreaks(paragraphs[0]);
                 const lastP_Array = _splitAndTrim(_getTextWithLineBreaks(paragraphs[paragraphs.length - 1]));
@@ -128,14 +139,25 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
     });
 }
 
-function _update_context(results, wordsToProcess, add_2_back) {
+function _update_context(results, wordsToProcess, add_2_back, include_transcription, sourceLang, replace_context_for_reader = false) {
+    // API and scraped responses share this policy; neither path should overwrite book hints.
     for (const result of results) {
-        const word = wordsToProcess.find(w => w.id.toString() === result.id.toString() || (w.id === util.WORD_IS_NEW && w.front === result.front));
+        const bracketed = result.front?.match(/\[[^\]\r\n]+\]/);
+        const front = bracketed ? result.front.replace(bracketed[0], '').trim() : result.front;
+        const word = wordsToProcess.find(w => w.id.toString() === result.id.toString() || (w.id === util.WORD_IS_NEW && w.front === front));
         if (word) {
-            word.context = result.context;
+            // Reader book examples survive by default; empty contexts can still be filled.
+            if (!util.isReaderCourse(word.course_id) || replace_context_for_reader || !util.hasText(word.context)) {
+                word.context = result.context;
+            }
             word.back = util.mergeTranslationBack(word.back, result.back, add_2_back);
+            const transcription = bracketed?.[0] || result.transcription?.match(/\[[^\]\r\n]+\]/)?.[0];
+            if (include_transcription && transcription) {
+                word.transcription = util.normalizeTranscription(transcription);
+            }
             if (util.unescape_html(util.delete_all_tags(result.back || '')).trim()) {
                 word.hasTranslation = true;
+                if (sourceLang) word.sourceLang = sourceLang;
             }
         }
     }
@@ -166,7 +188,8 @@ async function _check_context_results(tabId, wordsToProcess, optionsData) {
         context: `${scrapedArray[3]} → ${scrapedArray[4]}`
     }));
 
-    return _update_context(normalizedResults, wordsToProcess, optionsData.add_2_back);
+    return _update_context(normalizedResults, wordsToProcess, optionsData.add_2_back, optionsData.include_transcription,
+        optionsData.sourceLang || optionsData.translation_to, optionsData.replace_context_for_reader);
 }
 
 export async function processContexts(inWords, optionsData, actionCallback) {
@@ -176,6 +199,7 @@ export async function processContexts(inWords, optionsData, actionCallback) {
     const filteredWords = inWords; // inWords is already the filtered list
     const wordsPerRequest = optionsData.words_per_request;
 
+    // GROQ returns structured data directly; the other providers are read from browser tabs.
     if (optionsData.ai_model === util.AI_MODEL.GROQ) {
         const batchesToProcess = [];
         for (let i = 0; i < optionsData.request_count; i++) {
@@ -195,7 +219,8 @@ export async function processContexts(inWords, optionsData, actionCallback) {
             for (const result of results) {
                 if (result && result.length > 0) {
                     const batchWords = batchesToProcess[results.indexOf(result)];
-                    const processedWords = _update_context(result, batchWords, optionsData.add_2_back);
+                    const processedWords = _update_context(result, batchWords, optionsData.add_2_back, optionsData.include_transcription,
+                        optionsData.sourceLang || optionsData.translation_to, optionsData.replace_context_for_reader);
                     actionPromises.push(actionCallback(processedWords));
                 }
             }

@@ -2,14 +2,14 @@
     <div class="kindle-import">
         <v-card class="pa-4" variant="flat">
             <FileDropZone ref="kindleDropZoneRef" icon="mdi-database-import"
-                idle-label="Drop Kindle vocab.db or KOReader vocabulary_builder.sqlite3 here or click to select"
+                :idle-label="util.getText('reader_dropDatabase')"
                 accept=".db,.sqlite,.sqlite3,.sqlite-db" :processing="kindleIsProcessing"
                 @file-selected="handleKindleFileSelected" />
             <v-card-subtitle class="text-center pt-2" style="white-space: normal; overflow-wrap: anywhere;">
-                Kindle saves the vocabulary builder database at <code>Kindle/system/vocabulary/vocab.db</code> when the device is mounted.
+                Kindle: <code>Kindle/system/vocabulary/vocab.db</code>
             </v-card-subtitle>
             <v-card-subtitle class="text-center pt-2" style="white-space: normal; overflow-wrap: anywhere;">
-                Find the KOReader vocabulary database at <code>Storage/koreader/settings/vocabulary_builder.sqlite3</code> when the device is mounted.
+                KOReader: <code>Storage/koreader/settings/vocabulary_builder.sqlite3</code>
             </v-card-subtitle>
 
             <div v-show="false">
@@ -22,12 +22,16 @@
             </v-card-subtitle>
             </div>
         </v-card>
-
+        <ReaderBookLanguagesPanel v-if="pendingImport" :books="pendingImport.books" :loading="kindleIsProcessing"
+            class="px-4 pb-4" @cancel="cancelReaderImport" @confirm="confirmReaderImport" />
     </div>
 </template>
 
 <script setup>
 import FileDropZone, { createDropZoneState } from './small/FileDropZone.vue';
+import ReaderBookLanguagesPanel from './ReaderBookLanguagesPanel.vue';
+import { ref, toRaw } from 'vue';
+import { parseReaderDatabase, prepareReaderWords } from '../lib/readerImport.js';
 import { util } from '@/lib/util.js';
 import JSZip from 'jszip';
 
@@ -51,89 +55,8 @@ const emit = defineEmits(['refresh-words']);
 const { processing: kindleIsProcessing, dropZoneRef: kindleDropZoneRef } = createDropZoneState();
 const { processing: dictIsProcessing,   dropZoneRef: dictionaryDropZoneRef } = createDropZoneState();
 const KINDLE_COURSE = 'kindle';
-
-const KINDLE_SELECT_QUERY = `
-  SELECT
-    w.word AS word_original,
-    w.stem AS stem,
-    w.lang AS word_lang,
-    l.usage AS context,
-    l.timestamp AS date,
-    b.lang AS book_lang,
-    b.title AS book_title
-  FROM lookups l
-  JOIN words w ON w.id = l.word_key
-  JOIN book_info b ON b.id = l.book_key
-  ORDER BY l.timestamp DESC;
-`;
-
-const KOREADER_SELECT_QUERY = `
-    SELECT
-        v.word AS stem,
-        v.highlight AS word_original,
-        v.prev_context,
-        v.next_context,
-        v.create_time AS date,
-        t.name AS book_title
-    FROM vocabulary v
-    LEFT JOIN title t ON t.id = v.title_id
-    ORDER BY v.create_time DESC;
-`;
-
-const READER_FORMATS = [
-        { courseId: KINDLE_COURSE, name: 'Kindle', tables: ['lookups', 'words', 'book_info'], query: KINDLE_SELECT_QUERY,
-                context: (row, columns) => normalizeDefinition(row[columns.context]?.trim() || '')
-                        .replace(row[columns.word_original]?.trim() || '', `<strong>${row[columns.word_original]?.trim() || ''}</strong>`) },
-        { courseId: 'koreader', name: 'KOReader', tables: ['vocabulary', 'title'], query: KOREADER_SELECT_QUERY,
-                context: (row, columns) => {
-                        const escapeText = text => normalizeDefinition(text || '').replaceAll('&', '&amp;')
-                                .replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-                        const highlight = row[columns.word_original]?.trim() || row[columns.stem]?.trim() || '';
-                        return [escapeText(row[columns.prev_context]), `<strong>${escapeText(highlight)}</strong>`,
-                                escapeText(row[columns.next_context])].filter(Boolean).join(' ');
-                } },
-];
-
-function asUint8Array(payload) {
-    if (payload instanceof Uint8Array) {
-        return payload;
-    }
-    if (payload instanceof ArrayBuffer) {
-        return new Uint8Array(payload);
-    }
-    if (ArrayBuffer.isView(payload)) {
-        return new Uint8Array(payload.buffer);
-    }
-    return null;
-}
-
-function parseKindleTimestamp(rawTimestamp) {
-    if (rawTimestamp instanceof Date) {
-        return rawTimestamp;
-    }
-
-    const numericValue = Number(rawTimestamp);
-    if (!Number.isNaN(numericValue)) {
-        if (numericValue > 1e12) {
-            return new Date(numericValue);
-        }
-        if (numericValue > 1e9) {
-            return new Date(numericValue * 1000);
-        }
-        if (numericValue > 0) {
-            return new Date(numericValue);
-        }
-    }
-
-    if (typeof rawTimestamp === 'string') {
-        const parsed = Date.parse(rawTimestamp);
-        if (!Number.isNaN(parsed)) {
-            return new Date(parsed);
-        }
-    }
-
-    return new Date();
-}
+// Book rows and language choices are temporary; nothing is saved before confirmation.
+const pendingImport = ref(null);
 
 async function decompressGzip(compressedBytes) {
     if (!(compressedBytes instanceof Uint8Array)) {
@@ -251,163 +174,13 @@ function mergeWithReturn(existingText, addition, deleteBrackets = false) {
     return util.mergeWithReturn(existingText, addition, deleteBrackets);
 }
 
-async function importKindleLookups(buffer) {
-    const sqlModule = window?.SQL;
-    if (!sqlModule) {
-        throw new Error('SQL.js not initialized. Please wait and try again.');
-    }
-
-    const kindleBytes = asUint8Array(buffer);
-    if (!kindleBytes) {
-        throw new Error('Reader database payload is invalid.');
-    }
-
-    let sqliteDb;
-    try {
-        sqliteDb = new sqlModule.Database(kindleBytes);
-    } catch (error) {
-        throw new Error('Unable to open reader database file.');
-    }
-
-    let execResult;
-    let format;
-    try {
-        const tables = new Set(sqliteDb.exec("SELECT name FROM sqlite_master WHERE type = 'table'")[0]?.values.map(row => row[0].toLowerCase()) || []);
-        format = READER_FORMATS.find(reader => reader.tables.every(table => tables.has(table)));
-        if (!format) throw new Error('Please select a Kindle or KOReader vocabulary database.');
-        execResult = sqliteDb.exec(format.query);
-    } finally {
-        sqliteDb.close();
-    }
-
-    const queryResult = execResult && execResult.length ? execResult[0] : null;
-    const columns = queryResult ? queryResult.columns : [];
-    const rows = queryResult ? queryResult.values : [];
-
-    if (!rows.length) {
-        return { reader: format.name, total: 0, added: 0, skipped: 0, updated: 0 };
-    }
-
-    const columnIndex = columns.reduce((acc, columnName, index) => {
-        acc[columnName] = index;
-        return acc;
-    }, {});
-
-    const existingWords = await props.dbProxy.words.where({ course_id: format.courseId }).toArray();
-    const wordEntries = new Map();
-
-    for (const word of existingWords) {
-        const key = `${format.courseId}_${word.front}`;
-        wordEntries.set(key, {
-            source: 'db',
-            updated: false,
-            record: { ...word, context: (word.context || '').replace(/<br>/g, '') },
-        });
-    }
-
-    await util.save_options({ current_course_id: format.courseId });
-
-    let processedRows = 0;
-
-    for (const row of rows) {
-        const front = row[columnIndex.stem]?.trim();
-        if (!front) {
-            continue;
-        }
-        const context = format.context(row, columnIndex);
-        const transcriptionValue = row[columnIndex.book_title]?.trim() || '';
-
-        if (!context) {
-            continue;
-        }
-
-        const key = `${format.courseId}_${front}`;
-        const existingEntry = wordEntries.get(key);
-
-        if (existingEntry) {
-            if (existingEntry.record.context.includes(context)) {
-                continue;
-            }
-            const mergedContext = mergeWithReturn(existingEntry.record.context, context );
-            const mergedTranscription = mergeWithReturn(existingEntry.record.transcription, transcriptionValue);
-
-            existingEntry.record = {
-                ...existingEntry.record,
-                context: mergedContext,
-                transcription: mergedTranscription,
-            };
-
-            if (existingEntry.source === 'db') {
-                existingEntry.updated = true;
-            }
-            processedRows += 1;
-            continue;
-        }
-
-        wordEntries.set(key, {
-            source: 'new',
-            updated: false,
-            record: {
-                course_id: format.courseId,
-                front,
-                context,
-                date: parseKindleTimestamp(row[columnIndex.date]),
-                transcription: transcriptionValue,
-                targetLang: row[columnIndex.word_lang] || row[columnIndex.book_lang] || '',
-                //   sourceLang: courseInfo.sourceLang,
-            },
-        });
-        processedRows += 1;
-    }
-
-    const wordsToInsert = [];
-    const wordsToUpdate = [];
-
-    for (const { source, updated, record } of wordEntries.values()) {
-        if (source === 'new') {
-            const prepared = { ...record };
-            await props.dbProxy._set_dafaults(prepared);
-            wordsToInsert.push({
-                ...prepared,
-                context: props.dbProxy._addLineBreaks(prepared.context),
-            });
-        } else if (updated) {
-            wordsToUpdate.push({ ...record });
-        }
-    }
-
-    for (const word of wordsToUpdate) {
-        await props.dbProxy.updateWord(word);
-    }
-
-    if (wordsToInsert.length) {
-        await props.dbProxy.words.bulkAdd(wordsToInsert);
-    }
-
-    const total = rows.length;
-    const added = wordsToInsert.length;
-    const updated = wordsToUpdate.length;
-    const skipped = Math.max(0, total - processedRows);
-    return {
-        reader: format.name,
-        total,
-        added,
-        skipped,
-        updated,
-    };
-}
-
 function handleKindleFileSelected(file) {
     if (!file) {
         kindleDropZoneRef.value?.reset();
         return;
     }
 
-    if (kindleIsProcessing.value) {
-        props.showMessage('A reader import is already in progress.', 'info');
-        kindleDropZoneRef.value?.reset();
-        return;
-    }
+    if (kindleIsProcessing.value) return;
 
     processKindleFile(file);
 }
@@ -418,44 +191,46 @@ async function processKindleFile(file) {
     }
 
     kindleIsProcessing.value = true;
+    pendingImport.value = null;
 
     try {
         const buffer = await file.arrayBuffer();
-        const result = await importKindleLookups(buffer);
-
-        const { reader, total, added, skipped, updated } = result;
-        if (!total) {
-            props.showMessage(`No ${reader} lookups found in the selected file.`, 'info');
-            return;
-        }
-
-        const summaryParts = [];
-        if (added) {
-            summaryParts.push(`imported ${added}`);
-        }
-        if (updated) {
-            summaryParts.push(`updated ${updated}`);
-        }
-
-        const summary = summaryParts.length
-            ? `Processed ${total} ${reader} lookups: ${summaryParts.join(', ')}.`
-            : `No new ${reader} lookups were added.`;
-
-        props.showMessage(summary, (added || updated) ? 'success' : 'info');
-
-        const details = [];
-        if (updated) {
-            details.push(`Updated ${updated} existing words.`);
-        }
-        if (skipped > 0) {
-            details.push(`Skipped ${skipped} duplicates.`);
-        }
-
-        emit('refresh-words');
+        // Parsing only prepares the inline panel, not database records or active-course settings.
+        const pending = parseReaderDatabase(buffer, window.SQL);
+        if (pending.books.length) pendingImport.value = pending;
+        else props.showMessage(util.getText('reader_emptyDatabase'), 'info');
     } catch (error) {
-        console.error('Reader import failed:', error);
-        const message = error?.message || 'Failed to import reader database.';
-        props.showMessage(message, 'error');
+        props.showMessage(error.message, 'error');
+    } finally {
+        kindleIsProcessing.value = false;
+    }
+}
+
+function cancelReaderImport() {
+    if (kindleIsProcessing.value) return;
+    pendingImport.value = null;
+    kindleDropZoneRef.value?.reset();
+}
+
+async function confirmReaderImport() {
+    if (!pendingImport.value || kindleIsProcessing.value) return;
+    kindleIsProcessing.value = true;
+    try {
+        // Assign courses before merging identical words; book titles become learning hints.
+        const words = prepareReaderWords(pendingImport.value);
+        // Raw Dexie avoids Vue proxies in transactions; reimports update context and hint only.
+        const { added, updated } = await toRaw(props.dbProxy).importReaderWords(words);
+        pendingImport.value = null;
+        kindleDropZoneRef.value?.reset();
+        emit('refresh-words');
+        props.showMessage(util.getText('reader_importSummary', [added, updated]), 'success');
+        const courses = [...new Set(words.map(word => word.course_id))];
+        if (!courses.includes(props.optionsData.current_course_id)) {
+            await util.save_options({ current_course_id: courses[0] });
+            emit('refresh-words');
+        }
+    } catch (error) {
+        props.showMessage(error.message, 'error');
     } finally {
         kindleIsProcessing.value = false;
     }
@@ -600,5 +375,8 @@ function handleDictionaryFileSelected(file) {
 <style scoped>
 .kindle-import {
     height: 100%;
+    max-height: calc(100dvh - 8rem);
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 </style>
