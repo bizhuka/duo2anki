@@ -151,7 +151,7 @@ const handleUpdate = (content) => {
   newContent = newContent.replace(/<p><\/p>/g, '').replace(/<p>\s*<\/p>/g, '');   
 
   // Emit only normalized changes to avoid a Quill/v-model feedback loop.
-  if (newContent !== content) {
+  if (newContent !== props.modelValue) {
     emit('update:modelValue', newContent);
   }
 };

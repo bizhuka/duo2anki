@@ -19,6 +19,8 @@ Courses are grouped by language and reader, for example `fr_kindle`, `en_kindle`
 
 Readers and Duolingo use the same generation dialog. Reader requests include words missing a marked translation, context, or enabled transcription. `replace_context_for_reader` defaults to false: existing book examples and their HTML are preserved while translations/transcriptions are generated. Enable Overwrite existing context to replace book examples, including already completed words. Missing reader contexts are always filled; Duolingo generation always replaces the selected words' contexts. The retired Azure button, dialog component, and API implementations have been removed.
 
+ChatGPT and Grok responses are imported only after the expected rows contain five nonempty fields, the first and last IDs match, and the final translated sentence ends with punctuation. The response must remain unchanged for two seconds with no active generation indicator. This prevents the last arrow from triggering an import while its translation is still streaming; the existing two-minute timeout remains in place.
+
 ## Google Images Autofill
 Open a word's image search, then invoke the extension's toolbar button or Alt+D while the Google Images tab is active. This grants temporary access through `activeTab`, without adding Google host permissions. With the edit dialog open, the first loaded result fills and saves an empty image field, including during subsequent same-origin searches from word navigation. Existing images are never overwritten.
 

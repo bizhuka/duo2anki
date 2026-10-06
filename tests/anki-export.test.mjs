@@ -34,6 +34,37 @@ const word = { id: 1, front: 'bonjour', back: 'hello; good morning; greeting',
   context: '<b>Bonjour</b> tout le monde. → Hello everyone.', transcription: 'bɔ̃ʒuʁ', hint: 'French book',
   targetLang: 'fr', image: 'example.png', hasTranslation: true, course_id: 'fr_en' };
 
+test('rich-text editor propagates normalized edits without repeating unchanged values', () => {
+  const { descriptor: editor } = parse(readFileSync(
+    new URL('../src/components/small/RichTextEditor.vue', import.meta.url), 'utf8'));
+  const handlerSource = editor.scriptSetup.content.slice(editor.scriptSetup.content.indexOf('const handleUpdate ='));
+  const props = { modelValue: '<p>Original context.</p>', breakDelimeter: '\u23ce' };
+  const updates = [];
+  const handleUpdate = new Function('props', 'emit', `${handlerSource}\nreturn handleUpdate;`)(
+    props, (event, value) => {
+      assert.equal(event, 'update:modelValue');
+      updates.push(value);
+      props.modelValue = value;
+    });
+
+  handleUpdate('<p>Edited context.</p>');
+  assert.deepEqual(updates, ['<p>Edited context.</p>']);
+  handleUpdate('<p>Edited context.</p>');
+  assert.equal(updates.length, 1);
+  handleUpdate('<p><strong>Edited</strong> context.</p>');
+  assert.equal(updates.at(-1), '<p><strong>Edited</strong> context.</p>');
+  handleUpdate('<p>First.\u23ce Second.</p>');
+  assert.equal(updates.at(-1), '<p>First.\u23ce</p><p> Second.</p>');
+  handleUpdate(props.modelValue);
+  assert.equal(updates.length, 3);
+  handleUpdate('<p><br></p>');
+  assert.equal(updates.at(-1), '');
+
+  props.breakDelimeter = '\u23ce;\u2192';
+  handleUpdate('<p>new translation</p>');
+  assert.equal(updates.at(-1), '<p>new translation</p>');
+});
+
 function exporter(mode, words = [word], courseId = 'fr_en') {
   const vm = { ...component.data(), optionsData: { ...util.options, current_course_id: courseId, ankiExportMode: mode },
     db_words: words, messages: [], showMessage(...args) { this.messages.push(args); } };

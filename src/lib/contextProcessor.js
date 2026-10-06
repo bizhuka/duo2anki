@@ -1,7 +1,7 @@
 import { util } from './util.js';
 import { process_with_GROQ, ENABLE_DEBUG_LOGGING } from './ai.js';
 
-async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew) {
+async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew, ENABLE_DEBUG_LOGGING = false) {
     // Chrome runs this function in the AI tab, so its DOM helpers stay nested here.
     return new Promise((resolve, reject) => {
         const isGrok = ai_model === 'grok'; //util.AI_MODEL.GROK;
@@ -12,6 +12,9 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
             : '[data-markdown-text-style="assistant-message"]';
         if (ENABLE_DEBUG_LOGGING) console.log(`Using selectors: mainElementSelector: "${mainElementSelector}", resultSelector: "${resultSelector}"`);
         const timeoutDuration = 120 * 1000; // in seconds timeout
+        const settleDuration = 2000;
+        let settleTimeoutId = null;
+        let pendingSnapshot = null;
 
         const checkParagraphs = () => {
             function _getTextWithLineBreaks(element) {
@@ -40,82 +43,65 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
                 : [];
             if (ENABLE_DEBUG_LOGGING) console.log(`Found ${paragraphs.length} paragraphs.`);
 
-            // The prompt and parser share five arrow-separated fields; wait for the complete batch.
+            let lines;
             if (paragraphs.length === expectedLength) {
-                const firstP = _getTextWithLineBreaks(paragraphs[0]);
-                const lastP_Array = _splitAndTrim(_getTextWithLineBreaks(paragraphs[paragraphs.length - 1]));
-                const sanitizedFirstP = firstP?.replace(/^\s+/, '');
-                const sanitizedLastId = lastP_Array?.[0]?.replace(/^\s+/, '');
-                const lastSentence = lastP_Array?.[lastP_Array.length - 1] ?? '';
-                const lastSentenceIncludesDot = lastSentence.indexOf('.') > 0;
-                const lastIdMatches = sanitizedLastId?.startsWith(lastId.toString());
-                if (ENABLE_DEBUG_LOGGING) console.log('Checking condition for expectedLength:', {
-                    firstP: firstP,
-                    lastP_Array: lastP_Array,
-                    firstP_startsWith_firstId: sanitizedFirstP?.startsWith(firstId.toString()),
-                    lastP_Array_0_startsWith_lastId: lastIdMatches,
-                    wordIsNew: wordIsNew,
-                    lastP_Array_length: lastP_Array?.length,
-                    lastP_Array_last_item_includes_dot: lastSentenceIncludesDot,
-                    lastIdMatches: lastIdMatches
-                });
-                if ( ( (sanitizedFirstP?.startsWith(firstId.toString()) && lastIdMatches ) 
-                         || wordIsNew ) &&
-                    lastP_Array?.length === 5 &&                    
-                    (lastSentenceIncludesDot || lastIdMatches)) {
-                    // Return data from all '<p>'
-                    if (ENABLE_DEBUG_LOGGING) console.log('Conditions met for expectedLength. Returning data.');
-                    return Array.from(paragraphs).map(p => _splitAndTrim(_getTextWithLineBreaks(p)));
-                }
+                lines = paragraphs.map(_getTextWithLineBreaks);
             } else if (paragraphs.length === 1) {
-                const responseText = _getTextWithLineBreaks(paragraphs[0]);
-                const arrowCount = (responseText.match(/→/g) || []).length;
-                if (arrowCount !== expectedLength * (5 - 1)) {
-                    return null;
-                }
-
-                const parts = responseText.split(/\r?\n/).map(part => part.trim()).filter(Boolean);
-                const lastP_Array = _splitAndTrim(parts[parts.length - 1]);
-                const sanitizedLastId = lastP_Array?.[0]?.replace(/^\s+/, '');
-                const lastSentence = lastP_Array?.[lastP_Array.length - 1] ?? '';
-                const lastSentenceIncludesDot = lastSentence.indexOf('.') > 0;
-                const lastIdMatches = sanitizedLastId?.startsWith(lastId.toString());
-                if (ENABLE_DEBUG_LOGGING) console.log('Checking condition for single paragraph:', {
-                    'textContent': responseText,
-                    'parts': parts,
-                    'lastP_Array': lastP_Array,
-                    'last_item': lastP_Array[lastP_Array.length - 1],
-                    lastP_Array_last_item_includes_dot: lastSentenceIncludesDot,
-                    lastIdMatches: lastIdMatches
-                });
-                if (lastSentenceIncludesDot || lastIdMatches) {
-                    if (ENABLE_DEBUG_LOGGING) console.log('Conditions met for single paragraph. Returning data.');
-                    return parts.map(p => _splitAndTrim(p));
-                }
+                lines = _getTextWithLineBreaks(paragraphs[0]).split(/\r?\n/).filter(line => line.trim());
+            } else {
+                return null;
             }
-            if (ENABLE_DEBUG_LOGGING) console.log('Conditions not met yet.');
-            return null; // Indicate conditions not met yet
+            const rows = lines.map(_splitAndTrim);
+            if (rows.length !== expectedLength || rows.some(row => row.length !== 5 || row.some(field => !field))) {
+                return null;
+            }
+            if (!wordIsNew && (rows[0][0] !== String(firstId) || rows[rows.length - 1][0] !== String(lastId))) {
+                return null;
+            }
+            const lastSentence = rows[rows.length - 1][4];
+            if (!/[.!?\u2026\u3002\uFF01\uFF1F\u061F\u0964]["'\u00BB\u201D\u2019)\]]*$/.test(lastSentence)) {
+                return null;
+            }
+            if (document.querySelector('button[data-testid="stop-button"], button[data-testid="stop-generation"], button[aria-label*="stop" i], [data-is-streaming="true"], [data-streaming="true"], [aria-busy="true"]')) {
+                return null;
+            }
+            return rows;
         };
 
         // Set a timeout for the whole operation
         const timeoutId = setTimeout(() => {
             console.error("Timeout waiting for paragraphs.");
+            clearTimeout(settleTimeoutId);
             observer.disconnect();
             reject(new Error(`Timeout: Did not find ${expectedLength} paragraphs matching criteria within ${timeoutDuration / 1000} seconds.`));
         }, timeoutDuration);
 
-        // Create a MutationObserver
-        const observer = new MutationObserver((mutationsList, obs) => {
-            if (ENABLE_DEBUG_LOGGING) console.log('MutationObserver triggered.');
-            // Check if the conditions are met after any mutation
+        const scheduleCheck = () => {
             const result = checkParagraphs();
-            if (result) {
-                if (ENABLE_DEBUG_LOGGING) console.log('Result found, resolving promise.');
-                clearTimeout(timeoutId); // Clear the timeout
-                obs.disconnect(); // Stop observing
-                resolve(result); // Resolve the promise with the results
-            }
-            // Otherwise, continue observing
+            const snapshot = result ? JSON.stringify(result) : null;
+            if (snapshot && snapshot === pendingSnapshot) return;
+            clearTimeout(settleTimeoutId);
+            settleTimeoutId = null;
+            pendingSnapshot = snapshot;
+            if (!result) return;
+            settleTimeoutId = setTimeout(() => {
+                settleTimeoutId = null;
+                const settledResult = checkParagraphs();
+                if (settledResult && JSON.stringify(settledResult) === snapshot) {
+                    clearTimeout(timeoutId);
+                    observer.disconnect();
+                    resolve(settledResult);
+                } else {
+                    pendingSnapshot = null;
+                    scheduleCheck();
+                }
+            }, settleDuration);
+        };
+
+        // Create a MutationObserver
+        const observer = new MutationObserver(() => {
+            if (ENABLE_DEBUG_LOGGING) console.log('MutationObserver triggered.');
+            scheduleCheck();
         });
 
         // Start observing the target node for configured mutations
@@ -128,14 +114,15 @@ async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIs
         }
         if (ENABLE_DEBUG_LOGGING) console.log('Starting observer.');
         // Observe changes in children and subtree
-        observer.observe(targetNode, { childList: true, subtree: true });
+        observer.observe(targetNode, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['aria-busy', 'aria-label', 'data-testid', 'data-is-streaming', 'data-streaming'],
+        });
 
-        const initialResult = checkParagraphs();
-        if (initialResult) {
-            clearTimeout(timeoutId);
-            observer.disconnect();
-            resolve(initialResult);
-        }
+        scheduleCheck();
     });
 }
 
@@ -172,7 +159,7 @@ async function _check_context_results(tabId, wordsToProcess, optionsData) {
 
     const results = await chrome.scripting.executeScript({
         target: { tabId },
-        args: [firstId, lastId, expectedLength, optionsData.ai_model, Number(firstId) === util.WORD_IS_NEW],
+        args: [firstId, lastId, expectedLength, optionsData.ai_model, Number(firstId) === util.WORD_IS_NEW, ENABLE_DEBUG_LOGGING],
         func: _get_AI_results,
     });
 

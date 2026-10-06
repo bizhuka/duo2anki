@@ -263,6 +263,84 @@ test('context responses save bracketed bold transcription for API, ChatGPT and G
   }
 });
 
+test('browser context imports wait for a settled complete translation in both response layouts', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const source = readFileSync(new URL('../src/lib/contextProcessor.js', import.meta.url), 'utf8');
+  for (const singleParagraph of [false, true]) {
+    let lastTranslation = '';
+    let generating = false;
+    let notify;
+    let observed;
+    let disconnected = false;
+    const validFirstLine = '3961 \u2192 word \u2192 translation \u2192 Example. \u2192 Complete translation.';
+    let firstLine = validFirstLine;
+    let responseLastId = 3962;
+    const lastLine = () => `${responseLastId} \u2192 word [**stress**] \u2192 translation \u2192 Example. \u2192 ${lastTranslation}`;
+    const paragraph = text => ({ cloneNode: () => ({ textContent: text, querySelectorAll: () => [] }) });
+    const document = {
+      querySelector: selector => selector === 'body' ? {} : generating ? {} : null,
+      querySelectorAll: () => [{ querySelectorAll: () => singleParagraph
+        ? [paragraph(`${firstLine}\n${lastLine()}`)] : [paragraph(firstLine), paragraph(lastLine())] }],
+    };
+    class Observer {
+      constructor(callback) { notify = callback; }
+      observe(target, options) { observed = options; }
+      disconnect() { disconnected = true; }
+    }
+    const getResults = new Function('document', 'MutationObserver', 'setTimeout', 'clearTimeout',
+      source.slice(source.indexOf('async function _get_AI_results('), source.indexOf('function _update_context(')) + 'return _get_AI_results;'
+    )(document, Observer, setTimeout, clearTimeout);
+    let resolved = false;
+    const pending = getResults(3961, 3962, 2, singleParagraph ? 'grok' : 'chatgpt', false)
+      .then(rows => { resolved = true; return rows; });
+    assert.equal(observed.characterData, true);
+    assert.equal(observed.attributes, true);
+    assert.ok(observed.attributeFilter.includes('data-is-streaming'));
+    const advance = async duration => { context.mock.timers.tick(duration); await Promise.resolve(); };
+    await advance(3000);
+    assert.equal(resolved, false);
+    lastTranslation = 'Partial translation';
+    notify();
+    await advance(3000);
+    assert.equal(resolved, false);
+    lastTranslation = 'First sentence. Still unfinished';
+    notify();
+    await advance(3000);
+    assert.equal(resolved, false);
+    lastTranslation = 'Complete translation.';
+    responseLastId = 39620;
+    notify();
+    await advance(3000);
+    assert.equal(resolved, false);
+    responseLastId = 3962;
+    firstLine = '3961 \u2192 word \u2192 \u2192 Example. \u2192 Complete translation.';
+    notify();
+    await advance(3000);
+    assert.equal(resolved, false);
+    firstLine = validFirstLine;
+    lastTranslation = 'First sentence.';
+    generating = true;
+    notify();
+    await advance(3000);
+    assert.equal(resolved, false);
+    generating = false;
+    notify();
+    await advance(1500);
+    assert.equal(resolved, false);
+    lastTranslation = 'First sentence. Final sentence!';
+    notify();
+    await advance(1500);
+    assert.equal(resolved, false);
+    await advance(500);
+    const rows = await pending;
+    assert.equal(rows.length, 2);
+    assert.equal(rows[1][4], 'First sentence. Final sentence!');
+    assert.equal(rows[1][1], 'word [**stress**]');
+    assert.equal(disconnected, true);
+    assert.equal(resolved, true);
+  }
+});
+
 test('word editor renders saved escaped bold transcriptions and keeps false distinct from the null default', async () => {
   for (const hasTranslation of [undefined, null, false, true]) {
     const word = { ...initialWord(), hasTranslation, transcription: '<p>[bon&lt;b&gt;jour&lt;/b&gt;]</p>' };

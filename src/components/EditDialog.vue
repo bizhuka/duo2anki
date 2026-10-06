@@ -221,11 +221,12 @@ export default {
           prevValue = util.unescape_html(util.delete_all_linebreaks(prevValue)).replace(/<(\/?)strong>/gi, '<$1b>');
           currentValue = util.unescape_html(util.delete_all_linebreaks(currentValue)).replace(/<(\/?)strong>/gi, '<$1b>');
         }
-        if(prevValue !== currentValue){
-           console.log(`Property ${key} changed: `);
-           console.log(prevValue);
-           console.log(currentValue);
-        }
+        // if(prevValue !== currentValue){
+        //    console.log(`Property ${key} changed: `);
+        //    console.log(prevValue);
+        //    console.log(currentValue);
+        // }
+        //else console.log(`Comparing property ${key}: ${prevValue} vs ${currentValue}`);
         return prevValue !== currentValue;
       });
 
