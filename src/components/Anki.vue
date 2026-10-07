@@ -276,6 +276,10 @@ export default {
         this.showMessage(wordsToExport, 'warning');
         return;
       }
+      if (wordsToExport.some(word => util.isImageTooLarge(word.image))) {
+        this.showMessage(util.getText('image_base64TooLarge', [util.maxBase64ImageLength / 1024]), 'error');
+        return;
+      }
       
       if (!window.SQL) {
         this.showMessage('SQL.js not initialized. Please ensure it is loaded.', 'error');

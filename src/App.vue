@@ -18,7 +18,7 @@
       </v-app-bar>
 
       <v-main style="--v-layout-bottom: 0;--v-layout-top: 2.5rem;">
-        <InfoAlert ref="infoAlert" />
+        <InfoAlert ref="infoAlert" class="app-message" />
         <v-container fluid style="padding-top: 0rem; padding-bottom: 0;height: 100%;">
           <v-card density="compact" style="height: 100%;">
             <v-tabs v-model="activeTab" bg-color="primary" density="compact">              
@@ -154,8 +154,7 @@ export default {
       }
 
       // Set the image and auto-save
-      editDialog.dialog.editingWord.image = imageUrl;
-      editDialog.methods.saveEdit();
+      editDialog.methods.setImage(imageUrl);
     },
 
     showMessage(message, type = 'info') {
@@ -264,6 +263,16 @@ export default {
     height: 100%;
     display: flex;
     flex-direction: column;
+}
+
+.app-message {
+  position: fixed;
+  top: 2.5rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 10000;
+  max-height: calc(100dvh - 3.5rem);
+  overflow-y: auto;
 }
 
 /* Hide the app-level scrollbar while keeping the data-table scrollbar */

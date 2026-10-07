@@ -322,6 +322,13 @@ export const util = {
     return true;
   },
 
+  maxBase64ImageLength: 10 * 1024,
+
+  isImageTooLarge(src) {
+    return typeof src === 'string' && src.startsWith('data:image/') &&
+      src.includes(';base64,') && src.length > this.maxBase64ImageLength;
+  },
+
   // Validate image source URL or data URI
   isValidImageSource(src) {
     if (!src || typeof src !== 'string') return false;

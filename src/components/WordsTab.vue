@@ -83,7 +83,7 @@
 
     <!-- Moved Dialogs -->
     <EditDialog ref="editDialog" @save="handleSaveWord" :onArchiveWord="archiveWord" :filteredWords="filteredWords"
-      :optionsData="optionsData" />
+      :optionsData="optionsData" :showMessage="showMessage" />
     <ConfirmDialog ref="confirmDialog" :optionsData="optionsData" />
     <ContextDialog ref="contextDialog" :optionsData="optionsData" :saveOptions="saveOptions" :db_words="db_words"/>
   </div>

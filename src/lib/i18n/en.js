@@ -47,6 +47,7 @@ export default {
     "image_emptyHint": "Click to find. Missing images autofill after activation.",
     "image_autoFillHint": "Right-click a Google image > \"Set image\".\nNext words use the first image.",
     "image_contextMenu": "Set image for \"{0}\" + autofill",
+    "image_base64TooLarge": "Base64 image exceeds {0} KiB. Please use an image URL instead.",
     "Application Hotkeys": "Application hotkeys",
     "Open/Close Side Panel": "Open/close {0} side panel",
     "hotkeys_shortcutSettingsHint": "Alt+D is the default. If it does not work or conflicts with another extension, check or change the assigned shortcut at",

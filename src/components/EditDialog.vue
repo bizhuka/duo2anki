@@ -82,6 +82,7 @@
             :image="dialog.editingWord.image"
             @update:image="newImage => { dialog.editingWord.image = newImage }"
             @save="methods.saveEdit"
+            @image-too-large="methods.showImageError"
             @find-image="methods.findImageFromFront"
             :optionsData="optionsData"
           />
@@ -128,6 +129,10 @@ export default {
     },
     optionsData: { // Added prop
       type: Object,
+      required: true
+    },
+    showMessage: {
+      type: Function,
       required: true
     }
   },
@@ -378,12 +383,25 @@ export default {
               dialog.editingWord !== word || imageSearchVersion !== version || word.image || word.archived) {
             return false;
           }
-          word.image = image;
-          methods.saveEdit();
-          return true;
+          return methods.setImage(image);
         } catch {
           return false;
         }
+      },
+
+      showImageError() {
+        props.showMessage(util.getText('image_base64TooLarge', [util.maxBase64ImageLength / 1024]), 'error');
+      },
+
+      setImage(image) {
+        if (!dialog.show || !dialog.editingWord) return false;
+        if (util.isImageTooLarge(image)) {
+          methods.showImageError();
+          return false;
+        }
+        dialog.editingWord.image = image;
+        methods.saveEdit();
+        return true;
       },
 
       async playCurrentWordSound(mode = null) {  

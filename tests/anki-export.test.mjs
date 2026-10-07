@@ -13,6 +13,7 @@ import { util } from '../src/lib/util.js';
 import { isLocalExtension, getTranslateUrl } from '../src/lib/ai.js';
 import { translationLanguages } from '../src/lib/translationLanguages.js';
 import { getDuolingoCourseLanguage, normalizeLanguageCode } from '../src/lib/i18n/translation.js';
+import { readGoogleSearchImage } from '../src/lib/imageSearch.js';
 
 // Load the existing exporter with an in-memory download sink. FileSaver's named
 // browser export cannot be imported directly by Node; production code stays intact.
@@ -33,6 +34,162 @@ globalThis.window = { SQL };
 const word = { id: 1, front: 'bonjour', back: 'hello; good morning; greeting',
   context: '<b>Bonjour</b> tout le monde. → Hello everyone.', transcription: 'bɔ̃ʒuʁ', hint: 'French book',
   targetLang: 'fr', image: 'example.png', hasTranslation: true, course_id: 'fr_en' };
+
+test('image sources limit base64 length without limiting URLs', () => {
+  assert.equal(util.maxBase64ImageLength, 10 * 1024);
+  const prefix = 'data:image/jpeg;base64,';
+  const boundary = prefix + 'A'.repeat(util.maxBase64ImageLength - prefix.length);
+  assert.equal(util.isImageTooLarge(boundary), false);
+  assert.equal(util.isImageTooLarge(boundary + 'A'), true);
+  assert.equal(util.isImageTooLarge('https://example.com/' + 'A'.repeat(util.maxBase64ImageLength)), false);
+  assert.equal(util.isImageTooLarge(null), false);
+});
+
+test('oversized base64 images block export with a URL error without changing stored images', async () => {
+  const image = 'data:image/jpeg;base64,' + 'A'.repeat(util.maxBase64ImageLength);
+  const vm = exporter('listening', [{ ...word, image }]);
+  download = null;
+  await vm.triggerExport();
+  assert.equal(download, null);
+  assert.equal(vm.db_words[0].image, image);
+  assert.deepEqual(vm.messages, [[util.getText('image_base64TooLarge', [10]), 'error']]);
+});
+
+test('image drops reject oversized base64 without updating or saving', () => {
+  const { descriptor: dropZone } = parse(readFileSync(
+    new URL('../src/components/small/ImageDropZone.vue', import.meta.url), 'utf8'));
+  const dropComponent = new Function('ref', 'computed', 'useTheme', 'util',
+    dropZone.script.content.replace(/^import .*;.*$/gm, '').replace('export default', 'return'))(
+    value => ({ value }), getter => ({ get value() { return getter(); } }), () => ({}), util);
+  const events = [];
+  const { methods } = dropComponent.setup({ image: null }, { emit: (...args) => events.push(args) });
+  methods.setImage('data:image/png;base64,' + 'A'.repeat(util.maxBase64ImageLength));
+  assert.deepEqual(events, [['image-too-large']]);
+  events.length = 0;
+  methods.setImage('https://example.com/image');
+  assert.deepEqual(events, [['update:image', 'https://example.com/image'], ['save']]);
+  events.length = 0;
+  methods.setImage('data:image/png;base64,AAAA');
+  assert.deepEqual(events, [['update:image', 'data:image/png;base64,AAAA'], ['save']]);
+});
+
+test('image drops prefer image URLs over file content and surrounding webpage links', () => {
+  const { descriptor: dropZone } = parse(readFileSync(
+    new URL('../src/components/small/ImageDropZone.vue', import.meta.url), 'utf8'));
+  const dropComponent = new Function('ref', 'computed', 'useTheme', 'util',
+    dropZone.script.content.replace(/^import .*;.*$/gm, '').replace('export default', 'return'))(
+    value => ({ value }), getter => ({ get value() { return getter(); } }), () => ({}), util);
+  const events = [];
+  const { methods } = dropComponent.setup({ image: null }, { emit: (...args) => events.push(args) });
+  const originalParser = globalThis.DOMParser;
+  const originalReader = globalThis.FileReader;
+  const imageUrl = 'https://example.com/image';
+  const webpage = 'https://example.com/page';
+  const base64 = 'data:image/png;base64,' + 'A'.repeat(util.maxBase64ImageLength);
+  let imageSource = imageUrl;
+  let imageLink = webpage;
+  let reads = 0;
+  globalThis.DOMParser = class {
+    parseFromString() {
+      return { querySelector: () => ({ getAttribute: () => imageSource,
+        closest: () => ({ getAttribute: () => imageLink }) }) };
+    }
+  };
+  globalThis.FileReader = class {
+    readAsDataURL() {
+      reads++;
+      this.onload({ target: { result: base64 } });
+    }
+  };
+  const drop = (html, uri = '', plain = '') => methods.handleDrop({ preventDefault() {},
+    dataTransfer: { files: [{ type: 'image/png' }],
+      getData: type => ({ 'text/html': html, 'text/uri-list': uri, 'text/plain': plain })[type] || '' } });
+  try {
+    drop('image', webpage);
+    assert.deepEqual(events, [['update:image', imageUrl], ['save']]);
+    assert.equal(reads, 0);
+    events.length = 0;
+    imageSource = base64;
+    imageLink = 'https://www.google.com/imgres?imgurl=' + encodeURIComponent(imageUrl);
+    drop('image', imageLink);
+    assert.deepEqual(events, [['update:image', imageUrl], ['save']]);
+    assert.equal(reads, 0);
+    events.length = 0;
+    imageLink = webpage;
+    drop('image', webpage, imageUrl);
+    assert.deepEqual(events, [['update:image', imageUrl], ['save']]);
+    assert.equal(reads, 0);
+    events.length = 0;
+    drop('image', webpage);
+    assert.deepEqual(events, [['image-too-large']]);
+    assert.equal(reads, 1);
+    events.length = 0;
+    drop('');
+    assert.deepEqual(events, [['image-too-large']]);
+    assert.equal(reads, 2);
+  } finally {
+    globalThis.DOMParser = originalParser;
+    globalThis.FileReader = originalReader;
+  }
+});
+
+test('image editor shows app-level errors for oversized autofill and context-menu images without replacing the current image', () => {
+  const { descriptor: editor } = parse(readFileSync(
+    new URL('../src/components/EditDialog.vue', import.meta.url), 'utf8'));
+  const editorComponent = new Function('reactive', 'ref', 'watch', 'nextTick', 'computed', 'onBeforeUnmount',
+    'util', 'ENABLE_DEBUG_LOGGING', 'ReplaySoundButton', 'GenerateExampleButton',
+    'googleImageSearchQuery', 'readGoogleSearchImage',
+    editor.script.content.replace(/^import .*;$/gm, '').replace('export default', 'return'))(
+    value => value, value => ({ value }), () => {}, async () => {},
+    getter => ({ get value() { return getter(); } }), () => {}, util, false, {}, {}, () => {}, () => {});
+  const events = [];
+  const messages = [];
+  assert.doesNotMatch(editor.template.content, /<InfoAlert/);
+  const vm = editorComponent.setup({ filteredWords: [], optionsData: util.options,
+    showMessage: (...args) => messages.push(args) },
+    { emit: (...args) => events.push(args) });
+  vm.dialog.show = true;
+  vm.dialog.editingWord = { ...word };
+  assert.equal(vm.methods.setImage('data:image/jpeg;base64,' + 'A'.repeat(util.maxBase64ImageLength)), false);
+  assert.equal(vm.dialog.editingWord.image, word.image);
+  assert.deepEqual(events, []);
+  assert.deepEqual(messages, [[util.getText('image_base64TooLarge', [10]), 'error']]);
+  const image = 'https://example.com/original';
+  assert.equal(vm.methods.setImage(image), true);
+  assert.equal(vm.dialog.editingWord.image, image);
+  assert.equal(events.length, 1);
+  assert.equal(events[0][0], 'save');
+  assert.equal(messages.length, 1);
+});
+
+test('Google image autofill prefers original URLs and never converts URLs to base64', async () => {
+  const originalLocation = globalThis.location;
+  const originalDocument = globalThis.document;
+  const source = 'data:image/jpeg;base64,AAAA';
+  const thumbnail = 'https://example.com/thumbnail';
+  const original = 'https://example.com/original';
+  const image = (src, href = null) => ({ currentSrc: src, complete: true, naturalWidth: 200,
+    naturalHeight: 200, getBoundingClientRect: () => ({ width: 100, height: 100 }),
+    closest: () => href ? { href } : null });
+  let images = [];
+  globalThis.location = { href: 'https://www.google.com/search?udm=2&q=bonjour' };
+  globalThis.document = { querySelectorAll: () => images,
+    createElement: () => { throw new Error('Image autofill must not create base64'); } };
+  try {
+    images = [image(source, '/imgres?imgurl=' + encodeURIComponent(original))];
+    assert.equal(await readGoogleSearchImage('bonjour'), original);
+    images = [image(thumbnail)];
+    assert.equal(await readGoogleSearchImage('bonjour'), thumbnail);
+    images = [image(source), image(thumbnail)];
+    assert.equal(await readGoogleSearchImage('bonjour'), thumbnail);
+    images = [image(source)];
+    assert.equal(await readGoogleSearchImage('bonjour'), source);
+    assert.equal(await readGoogleSearchImage('different'), null);
+  } finally {
+    globalThis.location = originalLocation;
+    globalThis.document = originalDocument;
+  }
+});
 
 test('rich-text editor propagates normalized edits without repeating unchanged values', () => {
   const { descriptor: editor } = parse(readFileSync(

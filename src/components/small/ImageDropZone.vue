@@ -47,7 +47,7 @@ export default {
     }
   },
   
-  emits: ['update:image', 'save', 'find-image'],
+  emits: ['update:image', 'save', 'find-image', 'image-too-large'],
 
   setup(props, { emit }) {
     const theme = useTheme(); // Use theme
@@ -87,6 +87,15 @@ export default {
     });
 
     const methods = {
+      setImage(source) {
+        if (util.isImageTooLarge(source)) {
+          emit('image-too-large');
+          return;
+        }
+        emit('update:image', source);
+        emit('save');
+      },
+
       findImage() {
         if (!props.image) emit('find-image');
       },
@@ -99,14 +108,36 @@ export default {
         event.preventDefault();
         isDragOverValid.value = false; // Reset highlight state
 
+        const html = event.dataTransfer.getData('text/html');
+        const imageElement = html
+          ? new DOMParser().parseFromString(html, 'text/html').querySelector('img')
+          : null;
+        const imageSource = imageElement?.getAttribute('src');
+        const imageLink = imageElement?.closest('a[href]')?.getAttribute('href');
+        const urlSources = ['text/uri-list', 'text/plain']
+          .flatMap(type => event.dataTransfer.getData(type).split(/\r?\n/))
+          .map(source => source.trim()).filter(source => source && !source.startsWith('#'));
+        const originalSources = [imageLink, ...urlSources].map(source => {
+          try {
+            return new URL(source).searchParams.get('imgurl');
+          } catch {
+            return null;
+          }
+        });
+        const url = [...originalSources, imageSource, ...urlSources.filter(source => source !== imageLink)]
+          .find(source => /^https?:\/\//i.test(source || '') && util.isValidImageSource(source));
+        if (url) {
+          methods.setImage(url);
+          return;
+        }
+
         if (event.dataTransfer.files.length > 0) {
           const file = event.dataTransfer.files[0];
           if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = (e) => {
               if (e.target?.result) {
-                emit('update:image', e.target.result);
-                emit('save'); // Emit save event after file is read and image updated
+                methods.setImage(e.target.result);
               }
             };
             reader.readAsDataURL(file);
@@ -114,17 +145,9 @@ export default {
           }
         }
 
-        const html = event.dataTransfer.getData('text/html');
-        const imageSource = html
-          ? new DOMParser().parseFromString(html, 'text/html').querySelector('img')?.getAttribute('src')
-          : null;
-        const urlSources = (event.dataTransfer.getData('text/uri-list') ||
-          event.dataTransfer.getData('text/plain')).split(/\r?\n/)
-          .map(source => source.trim()).filter(source => source && !source.startsWith('#'));
         const source = [imageSource, ...urlSources].find(candidate => util.isValidImageSource(candidate));
         if (source) {
-          emit('update:image', source);
-          emit('save');
+          methods.setImage(source);
         }
       },
 
