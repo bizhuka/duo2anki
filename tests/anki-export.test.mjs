@@ -21,9 +21,9 @@ let download;
 const genankiSource = readFileSync(new URL('../src/lib/genanki.js', import.meta.url), 'utf8')
   .replace(/^import .*;$/gm, '').replace(/^export /gm, '');
 const { Model, Deck, Note, Package: AnkiPackage, getStableNoteGuid, getReaderAnkiId } = new Function(
-  'saveAs', 'sha256', 'JSZip', 'bigInt', 'STATUS',
+  'saveAs', 'sha256', 'JSZip', 'bigInt',
   `${genankiSource}\nreturn { Model, Deck, Note, Package, getStableNoteGuid, getReaderAnkiId };`
-)((blob, name) => { download = { blob, name }; }, sha256, JSZip, bigInt, STATUS);
+)((blob, name) => { download = { blob, name }; }, sha256, JSZip, bigInt);
 const { descriptor } = parse(readFileSync(new URL('../src/components/Anki.vue', import.meta.url), 'utf8'));
 const component = new Function('util', 'ActionButton', 'Model', 'Deck', 'Note', 'AnkiPackage', 'getStableNoteGuid', 'getReaderAnkiId', 'normalizeLanguageCode',
   descriptor.script.content.replace(/^import .*;$/gm, '').replace('export default', 'return')
@@ -36,7 +36,6 @@ const word = { id: 1, front: 'bonjour', back: 'hello; good morning; greeting',
   targetLang: 'fr', image: 'example.png', hasTranslation: true, course_id: 'fr_en' };
 
 test('image sources limit base64 length without limiting URLs', () => {
-  assert.equal(util.maxBase64ImageLength, 10 * 1024);
   const prefix = 'data:image/jpeg;base64,';
   const boundary = prefix + 'A'.repeat(util.maxBase64ImageLength - prefix.length);
   assert.equal(util.isImageTooLarge(boundary), false);
@@ -45,24 +44,56 @@ test('image sources limit base64 length without limiting URLs', () => {
   assert.equal(util.isImageTooLarge(null), false);
 });
 
-test('oversized base64 images block export with a URL error without changing stored images', async () => {
+test('image warnings include all course words, sort by size, and clear on the next clean export', async () => {
   const image = 'data:image/jpeg;base64,' + 'A'.repeat(util.maxBase64ImageLength);
-  const vm = exporter('listening', [{ ...word, image }]);
-  download = null;
-  await vm.triggerExport();
-  assert.equal(download, null);
-  assert.equal(vm.db_words[0].image, image);
-  assert.deepEqual(vm.messages, [[util.getText('image_base64TooLarge', [10]), 'error']]);
+  for (const mode of ['direct', 'reverse', 'listening']) {
+    const words = [{ ...word, image }, { ...word, front: 'salut', image: image + 'A' },
+      { ...word, front: 'merci' }, { ...word, front: 'archived', image: image + 'AA', archived: true },
+      { ...word, front: 'missing-context', image: image + 'AAA', context: '' },
+      { ...word, front: 'untranslated', image: image + 'AAAA', hasTranslation: false },
+      { ...word, front: 'other-course', image: image + 'AAAAA', course_id: 'de_en' }];
+    const original = structuredClone(words);
+    const vm = exporter(mode, words);
+    await vm.triggerExport();
+    assert.ok(download);
+    assert.deepEqual(vm.db_words, original);
+    assert.equal(vm.importGuide.show, true);
+    assert.equal(vm.importGuide.tab, 'import');
+    const warnings = ['untranslated', 'missing-context', 'archived', 'salut', 'bonjour']
+      .map((word, index) => ({ word, size: image.length + 4 - index }));
+    assert.deepEqual(vm.importGuide.warnings, warnings);
+    assert.ok(vm.messages.every(([, type]) => type === 'success'));
+    const zip = await JSZip.loadAsync(await download.blob.arrayBuffer());
+    const db = new SQL.Database(await zip.file('collection.anki2').async('uint8array'));
+    try {
+      const images = db.exec('SELECT flds FROM notes')[0].values.map(([fields]) => fields.split('\x1f')[3]);
+      assert.deepEqual(images, [image, image + 'A', word.image]);
+      assert.equal(db.exec('SELECT count(*) FROM cards')[0].values[0][0], 3);
+    } finally { db.close(); }
+    // The tab must still have warnings when every oversized image is excluded from export.
+    vm.db_words = words.filter(item => !['bonjour', 'salut'].includes(item.front));
+    await exportCollection(vm);
+    assert.deepEqual(vm.importGuide.warnings, warnings.slice(0, 3));
+    vm.importGuide.tab = 'warnings';
+    vm.db_words = [{ ...word }];
+    await exportCollection(vm);
+    assert.deepEqual(vm.importGuide.warnings, []);
+    assert.equal(vm.importGuide.tab, 'import');
+  }
 });
 
-test('image drops reject oversized base64 without updating or saving', () => {
+function imageDropZone(props, emit) {
   const { descriptor: dropZone } = parse(readFileSync(
     new URL('../src/components/small/ImageDropZone.vue', import.meta.url), 'utf8'));
   const dropComponent = new Function('ref', 'computed', 'useTheme', 'util',
     dropZone.script.content.replace(/^import .*;.*$/gm, '').replace('export default', 'return'))(
     value => ({ value }), getter => ({ get value() { return getter(); } }), () => ({}), util);
+  return dropComponent.setup(props, { emit });
+}
+
+test('image drops reject oversized base64 without updating or saving', () => {
   const events = [];
-  const { methods } = dropComponent.setup({ image: null }, { emit: (...args) => events.push(args) });
+  const { methods } = imageDropZone({ image: null }, (...args) => events.push(args));
   methods.setImage('data:image/png;base64,' + 'A'.repeat(util.maxBase64ImageLength));
   assert.deepEqual(events, [['image-too-large']]);
   events.length = 0;
@@ -74,13 +105,12 @@ test('image drops reject oversized base64 without updating or saving', () => {
 });
 
 test('image drops prefer image URLs over file content and surrounding webpage links', () => {
-  const { descriptor: dropZone } = parse(readFileSync(
-    new URL('../src/components/small/ImageDropZone.vue', import.meta.url), 'utf8'));
-  const dropComponent = new Function('ref', 'computed', 'useTheme', 'util',
-    dropZone.script.content.replace(/^import .*;.*$/gm, '').replace('export default', 'return'))(
-    value => ({ value }), getter => ({ get value() { return getter(); } }), () => ({}), util);
   const events = [];
-  const { methods } = dropComponent.setup({ image: null }, { emit: (...args) => events.push(args) });
+  const props = { image: null };
+  const { methods } = imageDropZone(props, (...args) => {
+    events.push(args);
+    if (args[0] === 'update:image') props.image = args[1];
+  });
   const originalParser = globalThis.DOMParser;
   const originalReader = globalThis.FileReader;
   const imageUrl = 'https://example.com/image';
@@ -109,6 +139,15 @@ test('image drops prefer image URLs over file content and surrounding webpage li
     assert.deepEqual(events, [['update:image', imageUrl], ['save']]);
     assert.equal(reads, 0);
     events.length = 0;
+    const thumbnail = 'https://encrypted-tbn0.gstatic.com/images?q=test';
+    imageSource = thumbnail;
+    imageLink = 'https://www.google.com/imgres?imgurl=' + encodeURIComponent(imageUrl);
+    drop('image', imageLink);
+    assert.deepEqual(events, [['update:image', imageUrl], ['save']]);
+    methods.handleImageError();
+    assert.deepEqual(events.slice(2), [['update:image', thumbnail], ['save']]);
+    assert.equal(reads, 0);
+    events.length = 0;
     imageSource = base64;
     imageLink = 'https://www.google.com/imgres?imgurl=' + encodeURIComponent(imageUrl);
     drop('image', imageLink);
@@ -133,6 +172,39 @@ test('image drops prefer image URLs over file content and surrounding webpage li
   }
 });
 
+test('failed original images save the HTTPS thumbnail, retry identical drops, and never loop or apply stale fallbacks', () => {
+  const original = 'https://example.com/protected.jpg';
+  const thumbnail = 'https://encrypted-tbn0.gstatic.com/images?q=test';
+  const props = { image: original };
+  const events = [];
+  const { methods, imageVersion } = imageDropZone(props, (...args) => {
+    events.push(args);
+    if (args[0] === 'update:image') props.image = args[1];
+  });
+  methods.setImage(original, thumbnail);
+  assert.equal(imageVersion.value, 1);
+  methods.handleImageError();
+  assert.equal(props.image, thumbnail);
+  assert.deepEqual(events, [['update:image', original], ['save'], ['update:image', thumbnail], ['save']]);
+  assert.equal(imageVersion.value, 2);
+  methods.handleImageError();
+  assert.equal(events.length, 4);
+
+  methods.setImage(original, thumbnail);
+  props.image = 'https://example.com/different-word.jpg';
+  methods.handleImageError();
+  assert.equal(props.image, 'https://example.com/different-word.jpg');
+
+  methods.setImage(original, 'http://example.com/insecure.jpg');
+  methods.handleImageError();
+  assert.equal(props.image, original);
+  const version = imageVersion.value;
+  methods.setImage(original, original);
+  assert.equal(imageVersion.value, version + 1);
+  methods.handleImageError();
+  assert.equal(props.image, original);
+});
+
 test('image editor shows app-level errors for oversized autofill and context-menu images without replacing the current image', () => {
   const { descriptor: editor } = parse(readFileSync(
     new URL('../src/components/EditDialog.vue', import.meta.url), 'utf8'));
@@ -153,7 +225,7 @@ test('image editor shows app-level errors for oversized autofill and context-men
   assert.equal(vm.methods.setImage('data:image/jpeg;base64,' + 'A'.repeat(util.maxBase64ImageLength)), false);
   assert.equal(vm.dialog.editingWord.image, word.image);
   assert.deepEqual(events, []);
-  assert.deepEqual(messages, [[util.getText('image_base64TooLarge', [10]), 'error']]);
+  assert.deepEqual(messages, [[util.getImageTooLargeMessage(), 'error']]);
   const image = 'https://example.com/original';
   assert.equal(vm.methods.setImage(image), true);
   assert.equal(vm.dialog.editingWord.image, image);
@@ -244,6 +316,8 @@ async function exportCollection(vm) {
     const model = Object.values(JSON.parse(db.exec('SELECT models FROM col')[0].values[0][0]))[0];
     const [fields, guid] = db.exec('SELECT flds, guid FROM notes')[0].values[0];
     assert.equal(db.exec('SELECT count(*) FROM cards')[0].values[0][0], 1);
+    assert.deepEqual(db.exec('SELECT type, queue, due, ivl, factor, reps, lapses, left, odue, odid FROM cards')[0].values[0],
+      Array(10).fill(0));
     return { model, fields: Object.fromEntries(model.flds.map((f, i) => [f.name, fields.split('\x1f')[i]])), guid };
   } finally {
     db.close();
@@ -338,6 +412,17 @@ test('Anki always requires marked nonempty translations and disables export when
 });
 
 for (const mode of ['direct', 'reverse', 'listening']) {
+  test(`${mode}: exported cards start new and Games progress is preserved`, async () => {
+    for (const status of [STATUS.LEARNING, STATUS.LEARNED, STATUS.RELEARNING]) {
+      const learnedWord = { ...word, status, next_review: new Date(1800000000000),
+        last_reviewed: new Date(1790000000000), interval: 14400, ease_factor: 2.7, steps_index: 2 };
+      const original = structuredClone(learnedWord);
+      const vm = exporter(mode, [learnedWord]);
+      await exportCollection(vm);
+      assert.deepEqual(learnedWord, original);
+    }
+  });
+
   test(`${mode}: exported APKG contains native TTS text and one card, without audio downloads`, async () => {
     const vm = exporter(mode);
     const course = util.options.current_course_id;
@@ -428,7 +513,6 @@ test('shared language normalization handles Ukrainian aliases without changing s
   assert.equal(getDuolingoCourseLanguage('nb'), 'Norwegian (Bokmål)');
   assert.deepEqual(util.get_course_info('ua_en'), { targetLang: 'ua', sourceLang: 'en', lang_id: 'UA' });
   assert.match(util.getCourseName('uk_kindle'), /Ukrainian/);
-  assert.match(descriptor.template.content, /anki_scheduleInfoTooltip/);
 });
 
 test('Anki templates take locale only from course_id and ignore individual word locales', async () => {

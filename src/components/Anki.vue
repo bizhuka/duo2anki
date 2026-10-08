@@ -51,22 +51,6 @@
                 <template v-slot:activator="{ props }">
                   <div v-bind="props" tabindex="0">
                     <v-checkbox
-                      v-model="optionsData.includeScheduleInformation"
-                      :disabled="exportingToAnki || exportMode.key !== 'direct'"
-                      :label="util.getText('includeScheduleInformation')"
-                      @update:model-value="saveOptions"
-                      density="compact"
-                      hide-details
-                    ></v-checkbox>
-                  </div>
-                </template>
-                <span>{{ util.getText('anki_scheduleInfoTooltip') }}</span>
-              </v-tooltip>
-
-              <v-tooltip location="top">
-                <template v-slot:activator="{ props }">
-                  <div v-bind="props" tabindex="0">
-                    <v-checkbox
                       :model-value="true"
                       disabled
                       :label="util.getText('Export with translations only')"
@@ -107,28 +91,55 @@
     <v-dialog v-model="importGuide.show" max-width="640" scrollable>
       <v-card>
         <v-card-title>{{ util.getText('Import into Anki') }}</v-card-title>
+        <v-tabs v-if="importGuide.warnings.length" v-model="importGuide.tab" color="primary">
+          <v-tab value="import">{{ util.getText('Import into Anki') }}</v-tab>
+          <v-tab value="warnings">{{ util.getText('Warnings') }} ({{ importGuide.warnings.length }})</v-tab>
+        </v-tabs>
         <v-card-text>
-          <p class="mb-3">{{ util.getText('anki_importFile', [importGuide.fileName]) }}</p>
-          <v-table density="compact" class="anki-import-settings">
-            <thead>
-              <tr>
-                <th>{{ util.getText('Import option') }}</th>
-                <th>{{ util.getText('Recommended setting') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="setting in importSettings" :key="setting.name">
-                <td>{{ setting.name }}</td>
-                <td>{{ setting.value }}</td>
-              </tr>
-            </tbody>
-          </v-table>
-          <p class="mt-3">{{ util.getText('anki_importUpdates') }}</p>
-          <p class="mt-3">{{ util.getText('anki_cardRequirements') }}</p>
-          <p class="mt-3">{{ util.getText('anki_importAudio') }}</p>
-          <v-alert type="warning" variant="tonal" density="compact" class="mt-3">
-            {{ util.getText('anki_importMigration') }}
-          </v-alert>
+          <v-window v-model="importGuide.tab">
+            <v-window-item value="import">
+              <p class="mb-3">{{ util.getText('anki_importFile', [importGuide.fileName]) }}</p>
+              <v-table density="compact" class="anki-import-settings">
+                <thead>
+                  <tr>
+                    <th>{{ util.getText('Import option') }}</th>
+                    <th>{{ util.getText('Recommended setting') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="setting in importSettings" :key="setting.name">
+                    <td>{{ setting.name }}</td>
+                    <td>{{ setting.value }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+              <p class="mt-3">{{ util.getText('anki_importUpdates') }}</p>
+              <p class="mt-3">{{ util.getText('anki_cardRequirements') }}</p>
+              <p class="mt-3">{{ util.getText('anki_importAudio') }}</p>
+              <v-alert type="warning" variant="tonal" density="compact" class="mt-3">
+                {{ util.getText('anki_importMigration') }}
+              </v-alert>
+            </v-window-item>
+            <v-window-item v-if="importGuide.warnings.length" value="warnings">
+              <v-alert type="warning" variant="tonal" density="compact">
+                {{ util.getImageTooLargeMessage('anki_imageSizeWarning') }}
+              </v-alert>
+              <v-table density="compact" class="anki-import-settings mt-3">
+                <thead>
+                  <tr>
+                    <th>{{ util.getText('Words') }}</th>
+                    <th>{{ util.getText('Image size') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(warning, index) in importGuide.warnings" :key="index">
+                    <td>{{ warning.word }}</td>
+                    <td>{{ (warning.size / 1000).toFixed(2) }} kB</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </v-window-item>
+          </v-window>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -180,7 +191,7 @@ export default {
   data() {
     return {
       exportingToAnki: false,
-      importGuide: { show: false, fileName: '', includeSchedule: false },
+      importGuide: { show: false, fileName: '', tab: 'import', warnings: [] },
     };
   },
   
@@ -196,8 +207,6 @@ export default {
     },
     importSettings() {
       return [
-        { name: util.getText('Import any learning progress'), value: this.importGuide.includeSchedule
-          ? util.getText('anki_importProgressInitial') : util.getText('Off') },
         { name: util.getText('Import any deck presets'), value: util.getText('Off') },
         { name: util.getText('Merge note types'), value: util.getText('On') },
         { name: util.getText('Update notes'), value: util.getText('Always') },
@@ -219,6 +228,13 @@ export default {
   },
   
   methods: {
+    getImageWarnings() {
+      return this.db_words
+        .filter(word => word.course_id === this.optionsData.current_course_id && util.isImageTooLarge(word.image))
+        .map(word => ({ word: word.front, size: util.getBase64ImageSize(word.image) }))
+        .sort((a, b) => b.size - a.size);
+    },
+
     get_id_from_name(name) {
       const mode = Object.values(EXPORT_MODES).find(mode => mode.suffix && name.endsWith(mode.suffix)) || EXPORT_MODES.direct;
       const baseName = mode.suffix ? name.slice(0, -mode.suffix.length) : name;
@@ -276,10 +292,6 @@ export default {
         this.showMessage(wordsToExport, 'warning');
         return;
       }
-      if (wordsToExport.some(word => util.isImageTooLarge(word.image))) {
-        this.showMessage(util.getText('image_base64TooLarge', [util.maxBase64ImageLength / 1024]), 'error');
-        return;
-      }
       
       if (!window.SQL) {
         this.showMessage('SQL.js not initialized. Please ensure it is loaded.', 'error');
@@ -301,15 +313,16 @@ export default {
         const language = this.getTtsLanguage(courseLanguage);
         const questionContent = '<div>{{Front}}</div>{{#Transcription}}<div class="transcription">{{Transcription}}</div>{{/Transcription}}';
         const hintContent = '{{#Hint}}<div class="hint">{{Hint}}</div>{{/Hint}}';
+        const preloadImage = '{{#Image}}<img src="{{Image}}" loading="eager" style="display:none" alt="">{{/Image}}';
         const answerContent = (contextAudio = '', hint = '') => `${questionContent}${hint}<hr id=answer><div>{{Back}}</div>{{#Image}}<div><img src="{{Image}}"></div>{{/Image}}${contextAudio}<div class="context">{{Context}}</div>`;
         const speed = options.ttsSpeed ?? 1;
         const audio = field => language ? `{{#${field}}}[anki:tts lang=${language} speed=${speed}]{{${field}}}[/anki:tts]{{/${field}}}` : '';
         const templates = {
-          direct: { name: util.getText('mainTemplate'), qfmt: `${questionContent}${hintContent}${audio('Sound')}`,
+          direct: { name: util.getText('mainTemplate'), qfmt: `${questionContent}${hintContent}${audio('Sound')}${preloadImage}`,
             afmt: answerContent(audio('ContextSound'), hintContent) },
-          reverse: { name: util.getText('Reverse'), qfmt: `{{#ReversePrompt}}<div>{{ReversePrompt}}</div>{{/ReversePrompt}}${hintContent}`,
+          reverse: { name: util.getText('Reverse'), qfmt: `{{#ReversePrompt}}<div>{{ReversePrompt}}</div>{{/ReversePrompt}}${hintContent}${preloadImage}`,
             afmt: answerContent(audio('CombinedSound'), hintContent) },
-          listening: { name: util.getText('Listening'), qfmt: `${audio('CombinedSound')}${hintContent}`,
+          listening: { name: util.getText('Listening'), qfmt: `${audio('CombinedSound')}${hintContent}${preloadImage}`,
             // FrontSide retains the question replay button without queuing answer audio.
             afmt: `{{FrontSide}}${answerContent()}` },
         };
@@ -346,14 +359,6 @@ export default {
         };
 
         for (const item of wordsToExport) { // Use for...of for async iteration
-          // Games supply the original progress; Reverse and Listening start as new cards.
-          const scheduleInfo = exportMode.key === 'direct' && options.includeScheduleInformation && item.next_review ? {
-              next_review: item.next_review,
-              status: item.status,
-              interval: item.interval,
-              ease_factor: item.ease_factor,
-          } : null;
-
           const sounds = {};
           for (const field of exportMode.fields) {
             sounds[field] = (util.get_sound_text(item, audioModes[field].mode) || '')
@@ -374,7 +379,7 @@ export default {
           else fields.push(reversePrompt, sounds.CombinedSound || '');
           fields.push(item.hint || '');
           // Editable translations, hints and examples do not change the note's identity.
-          const note = new Note(ankiModel, fields, scheduleInfo, null,
+          const note = new Note(ankiModel, fields, null,
             getStableNoteGuid(item.course_id || options.current_course_id, item.front, exportMode.key));
           ankiDeck.addNote(note);
         }
@@ -383,8 +388,8 @@ export default {
         const fileName = `${deckName}-${ wordsToExport.length } words-${ new Date().toISOString().split('T')[0] }.apkg`;
         await ankiPackage.writeToFile(fileName);
         this.showMessage(fileName, 'success');
-        this.importGuide = { show: true, fileName,
-          includeSchedule: exportMode.key === 'direct' && options.includeScheduleInformation };
+        this.importGuide = { show: true, fileName, tab: 'import',
+          warnings: this.getImageWarnings() };
       } catch (error) {
         console.error('Error exporting to Anki:', error);
         this.showMessage(util.getText('errorExportingToAnki'), 'error');

@@ -18,7 +18,6 @@ import { saveAs } from "file-saver";
 import { sha256 } from "js-sha256";
 import JSZip from "jszip";
 import bigInt from "big-integer";
-import { STATUS } from './database.js';
 
 const BASE91_TABLE = [
   'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -82,7 +81,7 @@ export class Model {
             ...props,
             flds: props.flds.map((f, i) => ({ ...defaultField, ord: i, ...f })),
             tmpls: props.tmpls.map((t, i) => ({ ...defaultTemplate, ord: i, name: `Card ${i + 1}`, ...t })),
-            mod: new Date().getTime()
+            mod: Math.floor(Date.now() / 1000)
         }
         this.fieldNameToOrd = {}
         this.props.flds.forEach(f => { this.fieldNameToOrd[f.name] = f.ord })
@@ -281,10 +280,9 @@ export class Deck {
 }
 
 export class Note {
-    constructor(model, fields, scheduleInfo = null, tags = null, guid = null) {
+    constructor(model, fields, tags = null, guid = null) {
         this.model = model
         this.fields = fields
-        this.scheduleInfo = scheduleInfo
         this.tags = tags
         this._guid = guid
     }
@@ -460,29 +458,6 @@ export class Package {
                 let note_id = rowID[0]['values'][0][0];
 
                 for (const card_ord of note.cards) {
-                    let type = 0, queue = 0, due = 0, ivl = 0, factor = 0;
-
-                    if (note?.scheduleInfo?.next_review) {
-                        factor = note.scheduleInfo.ease_factor * 1000;
-                
-                        switch (note.scheduleInfo.status) {
-                            case STATUS.LEARNED: // review
-                                type = 2;
-                                queue = 2;
-                                // - create date
-                                due = Math.floor((note.scheduleInfo.next_review.getTime() / 1000 - col[1]) / ( 60 * 60 * 24 ) ); // epoch timestamp in days
-                                ivl = Math.floor(note.scheduleInfo.interval / 60 / 24); // interval is in days / 60 minutes / 24 hours
-                                break;
-                            case STATUS.LEARNING:
-                            case STATUS.RELEARNING:
-                                type = 1; // learning & relearning
-                                queue = 1;
-                                due = Math.floor(note.scheduleInfo.next_review.getTime() / 1000); // epoch timestamp in seconds
-                                ivl = note.scheduleInfo.interval * ( 60 * 60 * 24 ); // interval in days to seconds
-                                break;
-                        }
-                    }
-
                     insert_cards.run(
                         [
                             note_id,            // nid
@@ -490,11 +465,11 @@ export class Package {
                             card_ord,           // ord
                             (+now / 1000) | 0,  // mod
                             -1,                 // usn
-                            type,                  // type 0=new, 1=learning, 2=due 
-                            queue,                  // queue -1 for suspended
-                            due,
-                            ivl,
-                            factor
+                            0,                  // type: new
+                            0,                  // queue: new
+                            0,                  // due
+                            0,                  // ivl
+                            0                   // factor
                         ])
                 }
             }

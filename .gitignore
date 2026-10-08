@@ -2,6 +2,7 @@
 node_modules
 package-lock.json
 dist
+dist-duo2anki
 dist-ssr
 /dist
 

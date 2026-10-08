@@ -25,7 +25,6 @@ export const util = {
     // Anki export options
     ankiExportMode: 'direct',
     exportWithContextOnly: true,
-    includeScheduleInformation: true,
     exportWithImagesOnly: true,
 
     // Game Notification
@@ -322,11 +321,19 @@ export const util = {
     return true;
   },
 
-  maxBase64ImageLength: 10 * 1024,
+  maxBase64ImageLength: 10 * 1000,
+
+  getImageTooLargeMessage(key = 'image_base64TooLarge') {
+    return this.getText(key, [this.maxBase64ImageLength / 1000]);
+  },
+
+  getBase64ImageSize(src) {
+    return typeof src === 'string' && src.startsWith('data:image/') && src.includes(';base64,')
+      ? src.length : 0;
+  },
 
   isImageTooLarge(src) {
-    return typeof src === 'string' && src.startsWith('data:image/') &&
-      src.includes(';base64,') && src.length > this.maxBase64ImageLength;
+    return this.getBase64ImageSize(src) > this.maxBase64ImageLength;
   },
 
   // Validate image source URL or data URI

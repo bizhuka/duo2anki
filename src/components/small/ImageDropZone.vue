@@ -16,12 +16,19 @@
     <!-- Image Display -->
     <v-img
       v-if="image"
+      :key="imageVersion"
       :src="image"
+      @error="methods.handleImageError"
       height="100%"
+      min-height="7rem"
       max-height="100%"
       contain
       style="border-radius: 4px; display: block; object-fit: contain;"
-    ></v-img>
+    >
+      <template #error>
+        <div class="pa-3 text-medium-emphasis">{{ util.getText('image_loadError') }}</div>
+      </template>
+    </v-img>
     <div v-else style="text-align: center; color: #616161;"> <!-- Added text color -->
       <div>{{ util.getText('Drop image here (URL or file)') }}</div>
       <div class="text-body-2 mt-2">{{ util.getText('image_emptyHint') }}</div>
@@ -52,6 +59,9 @@ export default {
   setup(props, { emit }) {
     const theme = useTheme(); // Use theme
     const isDragOverValid = ref(false);
+    const imageVersion = ref(0);
+    let fallbackSource = null;
+    let fallbackFor = null;
 
     const dropZoneStyle = computed(() => {
       let bgColor;
@@ -87,11 +97,21 @@ export default {
     });
 
     const methods = {
-      setImage(source) {
+      handleImageError() {
+        if (fallbackFor === props.image && fallbackSource) {
+          methods.setImage(fallbackSource);
+        }
+      },
+
+      setImage(source, thumbnail = null) {
         if (util.isImageTooLarge(source)) {
           emit('image-too-large');
           return;
         }
+        fallbackFor = source;
+        fallbackSource = thumbnail !== source && /^https:\/\//i.test(thumbnail || '') && util.isValidImageSource(thumbnail)
+          ? thumbnail : null;
+        imageVersion.value += 1;
         emit('update:image', source);
         emit('save');
       },
@@ -125,9 +145,9 @@ export default {
           }
         });
         const url = [...originalSources, imageSource, ...urlSources.filter(source => source !== imageLink)]
-          .find(source => /^https?:\/\//i.test(source || '') && util.isValidImageSource(source));
+          .find(source => /^https:\/\//i.test(source || '') && util.isValidImageSource(source));
         if (url) {
-          methods.setImage(url);
+          methods.setImage(url, imageSource);
           return;
         }
 
@@ -145,7 +165,8 @@ export default {
           }
         }
 
-        const source = [imageSource, ...urlSources].find(candidate => util.isValidImageSource(candidate));
+        const source = [imageSource, ...urlSources].find(candidate =>
+          /^(https:\/\/|data:image\/)/i.test(candidate || '') && util.isValidImageSource(candidate));
         if (source) {
           methods.setImage(source);
         }
@@ -173,6 +194,7 @@ export default {
     return {
       // Data
       isDragOverValid, // Needed for :class binding
+      imageVersion,
 
       // Computed
       dropZoneStyle,

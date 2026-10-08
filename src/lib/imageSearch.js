@@ -31,14 +31,14 @@ export async function readGoogleSearchImage(expectedQuery) {
             const source = image.currentSrc || image.src;
             const bounds = image.getBoundingClientRect();
             if (!image.complete || image.naturalWidth < 40 || image.naturalHeight < 40 ||
-                bounds.width < 40 || bounds.height < 40 || !/^(https?:|data:image\/)/i.test(source)) continue;
+                bounds.width < 40 || bounds.height < 40 || !/^(https:\/\/|data:image\/)/i.test(source)) continue;
             try {
                 const link = image.closest('a[href*="/imgres"]');
                 const original = link && new URL(link.href, location.href).searchParams.get('imgurl');
-                if (original && /^https?:\/\//i.test(original)) return original;
+                if (original && /^https:\/\//i.test(original)) return original;
             } catch {
             }
-            if (/^https?:\/\//i.test(source)) return source;
+            if (/^https:\/\//i.test(source)) return source;
             fallback ||= source;
         }
         return fallback;

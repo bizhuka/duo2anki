@@ -6,6 +6,9 @@ This project is a **Chrome extension** that extracts vocabulary from Duolingo an
 -->
 This project is a **Chrome extension** that extracts vocabulary from Duolingo and exports **Anki `.apkg` files** for import into Anki. The extension consists of a **side panel** providing the user interface and features.
 
+## Development and Testing
+After code modifications, run the relevant tests (`npm.cmd test`) and build the extension (`npm.cmd run build`) before testing in the browser. The build writes to `dist-duo2anki`; reload the unpacked extension from that folder before testing. See `AGENTS.md` for the same requirement for coding agents.
+
 ## Reader Imports
 The Reader Import tab accepts both databases in the same drop area and detects their format automatically:
 - Kindle: `Kindle/system/vocabulary/vocab.db`
@@ -24,7 +27,9 @@ ChatGPT and Grok responses are imported only after the expected rows contain fiv
 ## Google Images Autofill
 Open a word's image search, then invoke the extension's toolbar button or Alt+D while the Google Images tab is active. This grants temporary access through `activeTab`, without adding Google host permissions. With the edit dialog open, the first loaded result fills and saves an empty image field, including during subsequent same-origin searches from word navigation. Existing images are never overwritten.
 
-The current base64 image source is retained when available. Canvas conversion is attempted for remote thumbnails; if cross-origin restrictions prevent conversion, the image URL is saved instead. After closing the search tab or leaving its origin, invoke the extension again on Google Images to grant access.
+Image URLs must use HTTPS. Autofill and image drops prefer the original image URL and do not convert URLs to base64. Small embedded images and local image files are supported; oversized embedded images are rejected when adding them. After closing the search tab or leaving its origin, invoke the extension again on Google Images to grant access.
+
+When a dropped original image fails to load (for example, because of anti-bot protection), the editor tries the HTTPS thumbnail from the same drag and saves its URL instead. Re-dropping the same image retries loading. If no usable thumbnail is available or it also fails, the drop area shows an error and invites another image drop.
 
 ## Anki Card Types and Reimports
 Choose Direct, Reverse, or Listening before exporting. Each mode uses the same vocabulary list but produces its own deck and note type, with one card per word:
@@ -34,7 +39,7 @@ Choose Direct, Reverse, or Listening before exporting. Each mode uses the same v
 
 All modes append a separate Hint field. The obsolete TtsLanguage field is no longer exported: the locale is written directly into the audio templates. Note GUIDs and deck/model identities remain stable, but the field layout changes. Back up before reimporting and use Update note types: Always for the revised templates. Hint is editable in the word editor; Transcription is a read-only HTML preview beside Front. Generated pronunciation updates only Transcription.
 
-For existing Duolingo courses, Direct retains the original deck name, first six field positions, and deck/model IDs, and appends ContextSound and Hint. Reverse and Listening retain ReversePrompt and CombinedSound in their existing positions, followed by Hint. They add ` - Reverse` or ` - Listening` to the deck and note-type names, use distinct fixed ID offsets, and start new. New language-specific reader courses have separate reader/language/mode deck names, note types, and stable hashed deck/model IDs. Their GUIDs include the full course ID, so Kindle and KOReader notes do not merge. Reverse requires a nonempty translation; Listening requires a valid course language for audio. Learning progress can be exported only in Direct mode.
+For existing Duolingo courses, Direct retains the original deck name, first six field positions, and deck/model IDs, and appends ContextSound and Hint. Reverse and Listening retain ReversePrompt and CombinedSound in their existing positions, followed by Hint. They add ` - Reverse` or ` - Listening` to the deck and note-type names, use distinct fixed ID offsets, and start new. New language-specific reader courses have separate reader/language/mode deck names, note types, and stable hashed deck/model IDs. Their GUIDs include the full course ID, so Kindle and KOReader notes do not merge. Reverse requires a nonempty translation; Listening requires a valid course language for audio. All modes export new cards; learning progress is used only by the Games tab.
 
 Context and image export filters have checkboxes and default to true. Translations are mandatory in every mode and course: `hasTranslation === true` and meaningful nonempty Back text are required. The translation checkbox is permanently checked/disabled with an explanatory hint; the old `exportWithTranslationsOnly` option is removed and old saved false values cannot bypass the requirement. Export is disabled when no eligible words remain. Context and image requirements can still be unchecked; saved choices are retained.
 
@@ -61,11 +66,12 @@ Keep Anki's “Don't play audio automatically” disabled for question autoplay.
 New exports identify notes by mode, course, and Front word, not by editable translations, images, or context. Re-exporting the same words in the same mode retains their GUIDs, while each strategy remains independent. GUIDs use a 64-bit SHA-256 digest encoded in Anki's base91 format; the earlier experimental helper used faulty arithmetic and could produce collisions. Changing the mode, course, or Front word creates a different note identity.
 
 After downloading the `.apkg`, use Anki's File > Import. The extension also shows these recommendations after export:
-- Import any learning progress: Off for repeat imports; On for an initial import only when exported learning progress is desired.
 - Import any deck presets: Off.
 - Merge note types: On if Anki needs to reconcile a changed schema. Schema merging may require a one-way sync.
 - Update notes: Always. This replaces field edits made in Anki with the exported values.
 - Update note types: Always.
+
+Existing oversized embedded images do not block Anki export. The Import into Anki dialog shows a second Warnings tab only when there are warnings, listing all words in the selected course whose stored base64 images exceed the shared limit in `util.maxBase64ImageLength`, including archived words and words excluded by export filters. The list is sorted from largest to smallest and shows stored image sizes in kB (kilobytes). Exported images remain unchanged. To save space, drag an image into the word editor to use its HTTPS URL instead. Adding a new oversized base64 image still shows an error.
 
 Back up your collection before migrating older exports. Their GUIDs depended on all fields, so the first import from this version can create duplicate notes. Merge note types does not merge different note GUIDs. Review duplicates and their learning history before removing any; subsequent exports from the same mode use stable identities. If you imported the earlier combined three-card export, review its extra Reverse/Listening templates in the Direct note type: importing does not reliably remove them, and deleting templates deletes their cards and learning history.
 
@@ -173,7 +179,6 @@ src/
 ### 5. **Anki Export (`Anki.vue`, `lib/genanki.js`)** 🔄
 - Generates `.apkg` files locally using SQL.js and JSZip.
 - Exports the selected mode with stable note identities and native Anki TTS.
-- Direct mode can include learning progress.
 - Import the downloaded file using Anki's File > Import; no AnkiConnect connection is needed.
 
 ## Notes 📝

@@ -79,6 +79,7 @@
           <!-- Combined Image Display and Drop Zone -->
           <ImageDropZone
             v-if="!dialog.editingWord.archived"
+            :key="dialog.editingWord.id"
             :image="dialog.editingWord.image"
             @update:image="newImage => { dialog.editingWord.image = newImage }"
             @save="methods.saveEdit"
@@ -390,7 +391,7 @@ export default {
       },
 
       showImageError() {
-        props.showMessage(util.getText('image_base64TooLarge', [util.maxBase64ImageLength / 1024]), 'error');
+        props.showMessage(util.getImageTooLargeMessage(), 'error');
       },
 
       setImage(image) {
