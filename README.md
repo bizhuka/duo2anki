@@ -43,6 +43,8 @@ For existing Duolingo courses, Direct retains the original deck name, first six 
 
 Context and image export filters have checkboxes and default to true. Translations are mandatory in every mode and course: `hasTranslation === true` and meaningful nonempty Back text are required. The translation checkbox is permanently checked/disabled with an explanatory hint; the old `exportWithTranslationsOnly` option is removed and old saved false values cannot bypass the requirement. Export is disabled when no eligible words remain. Context and image requirements can still be unchecked; saved choices are retained.
 
+Use the cog beside Export to customize Front, Back, and CSS for Direct, Reverse, or Listening. Preview uses the first word in the current course, and its audio buttons read the rendered TTS text through the selected browser provider. Save persists draft changes; Cancel discards them. Reset restores only the selected mode. Application defaults replace saved customizations when the field-name set changes.
+
 ### Built-in Anki TTS
 Exports store speech text from `util.get_sound_text`, rather than audio URLs or MP3 files. Browser playback still uses `get_sound_url` and the selected provider, with Responsive Voice as the default. Retired Azure TTS and legacy media-export implementations have been removed. Unsupported saved provider choices fall back to Responsive Voice when options are loaded. Other saved provider choices are retained.
 
@@ -70,6 +72,8 @@ After downloading the `.apkg`, use Anki's File > Import. The extension also show
 - Merge note types: On if Anki needs to reconcile a changed schema. Schema merging may require a one-way sync.
 - Update notes: Always. This replaces field edits made in Anki with the exported values.
 - Update note types: Always.
+
+On current Anki Desktop and AnkiDroid, expand Updates during import and set Update note types to Always to apply template changes. This overwrites template edits made in Anki and avoids timestamp comparisons against older imports that used milliseconds for note-type modification times. For manual AnkiDroid edits, use ⋮ Menu → Manage Note Types → Cards (first pencil icon).
 
 Existing oversized embedded images do not block Anki export. The Import into Anki dialog shows a second Warnings tab only when there are warnings, listing all words in the selected course whose stored base64 images exceed the shared limit in `util.maxBase64ImageLength`, including archived words and words excluded by export filters. The list is sorted from largest to smallest and shows stored image sizes in kB (kilobytes). Exported images remain unchanged. To save space, drag an image into the word editor to use its HTTPS URL instead. Adding a new oversized base64 image still shows an error.
 

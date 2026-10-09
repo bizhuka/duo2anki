@@ -24,6 +24,7 @@ export const util = {
 
     // Anki export options
     ankiExportMode: 'direct',
+    ankiTemplates: {},
     exportWithContextOnly: true,
     exportWithImagesOnly: true,
 
@@ -98,6 +99,11 @@ export const util = {
   },
 
   unescape_html: function (text) {
+    if (typeof document !== 'undefined' && document.createElement) {
+      const decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      return decoder.value;
+    }
     return text.
         replace(/&nbsp;|&#160;/gi, ' ')
         .replaceAll('&apos;', "'")
@@ -213,12 +219,13 @@ export const util = {
     return null;
   },
 
-  playSound: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT) {
+  playSound: function (item, mode = util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT, { speed = this.options.ttsSpeed } = {}) {
     if(ENABLE_DEBUG_LOGGING)console.log("playSound called with mode:", mode);
     
     if (this.audioPlayer) {
       this.audioPlayer.pause();
       this.audioPlayer.currentTime = 0;
+      this.audioPlayer = null;
     }
 
     const audioUrl = this.get_sound_url(item, mode);
@@ -227,17 +234,21 @@ export const util = {
     }
 
     try {
-      this.audioPlayer = new Audio(audioUrl);
-      this.audioPlayer.playbackRate = this.options.ttsSpeed;
+      const player = new Audio(audioUrl);
+      this.audioPlayer = player;
+      player.playbackRate = speed;
+      const playbackContext = `provider=${this.options.ttsProvider}, language=${item.targetLang}, speed=${speed}`;
       if(ENABLE_DEBUG_LOGGING)console.log("!!!!!!!!!!!Playing audio:", { item, mode });
       
       // Rely on browser audio playback via selected TTS provider
-      this.audioPlayer.play().catch((error) => {
-        console.error('Error playing audio:', error);
+      player.play().catch((error) => {
+        // Replacing/stopping a pending sound intentionally rejects its play promise.
+        if (error.name === 'AbortError' && this.audioPlayer !== player) return;
+        console.error(`Error playing audio: ${error.name}: ${error.message} (${playbackContext}, mediaError=${player.error?.code ?? 'none'})`);
       });
-      return this.audioPlayer;
+      return player;
     } catch (error) {
-      console.error('Failed to create audio element:', error);
+      console.error(`Failed to create audio element: ${error.name}: ${error.message}`);
       this.audioPlayer = null;
     }
 

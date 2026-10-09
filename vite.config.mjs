@@ -16,6 +16,7 @@ export default defineConfig({
   publicDir: false, // Prevent auto-copying all files from public/
 
   build: {   
+    minify: false,
     chunkSizeWarningLimit: 2000, // Adjust chunk size warning limit to 2000 kB
     rollupOptions: {
       input: {

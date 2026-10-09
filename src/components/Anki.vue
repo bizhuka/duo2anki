@@ -1,14 +1,19 @@
 <template>
   <div>
 
-    <div class="d-flex justify-end px-2" style="margin-bottom: 0.5rem;">
+    <div class="anki-export-actions d-flex align-center justify-end px-2" style="margin-bottom: 0.5rem;">
       <ActionButton icon="mdi-upload"
-        :tooltipText="util.getText('Anki')"
+        :tooltipText="util.getText('Export')"
         color="success"
         :disabled="!canExport || exportingToAnki"
         :loading="exportingToAnki"
         @click="triggerExport"/>
+      <ActionButton icon-only icon="mdi-cog-outline" :tooltipText="util.getText('Templates')" color="success"
+        :disabled="exportingToAnki" @click="$refs.templateEditor.open(exportMode.key)" />
     </div>
+
+    <AnkiTemplateEditor ref="templateEditor" :optionsData="optionsData" :saveOptions="saveOptions"
+      :showMessage="showMessage" :word="previewWord" />
 
     <v-card>
       <v-card-title>
@@ -157,17 +162,13 @@
 
 <script>
 import { Model, Deck, Note, Package as AnkiPackage, getStableNoteGuid, getReaderAnkiId } from '../lib/genanki.js';
-import { normalizeLanguageCode } from '../lib/i18n/translation.js';
-
-const EXPORT_MODES = {
-  direct: { key: 'direct', label: 'Direct', suffix: '', idOffset: 0, fields: ['Sound', 'ContextSound'], required: [0] },
-  reverse: { key: 'reverse', label: 'Reverse', suffix: ' - Reverse', idOffset: 10000000, fields: ['CombinedSound'], required: [0, 6] },
-  listening: { key: 'listening', label: 'Listening', suffix: ' - Listening', idOffset: 20000000, fields: ['CombinedSound'], required: [0, 7] },
-};
+import { EXPORT_MODES, getTtsLanguage, getAnkiFieldNames, getAnkiNoteFields, getAnkiTemplate } from '../lib/ankiTemplates.js';
+import AnkiTemplateEditor from './AnkiTemplateEditor.vue';
 
 export default {
   components: { 
     ActionButton,
+    AnkiTemplateEditor,
   },
   props: {
     optionsData: {
@@ -196,6 +197,9 @@ export default {
   },
   
   computed: {
+    previewWord() {
+      return this.db_words.find(word => word.course_id === this.optionsData.current_course_id) || null;
+    },
     canExport() {
       return Array.isArray(this.getValidWordsForExport());
     },
@@ -244,16 +248,7 @@ export default {
       return mode.idOffset + namespaceOffset + (hash % 1000000000);
     },
 
-    getTtsLanguage(targetLang) {
-      if (!targetLang?.trim()) return '';
-      try {
-        const code = normalizeLanguageCode(targetLang);
-        const locale = new Intl.Locale(code).maximize();
-        return [locale.language, locale.region].filter(Boolean).join('_');
-      } catch {
-        return '';
-      }
-    },
+    getTtsLanguage,
 
     getValidWordsForExport() {
       if (!this.db_words || this.db_words.length === 0) {
@@ -308,40 +303,14 @@ export default {
         : this.get_id_from_name(nodeType);
       let db;
       try {
-        // The course defines the shared template voice; words do not override it.
-        const courseLanguage = util.get_course_info(options.current_course_id).targetLang;
-        const language = this.getTtsLanguage(courseLanguage);
-        const questionContent = '<div>{{Front}}</div>{{#Transcription}}<div class="transcription">{{Transcription}}</div>{{/Transcription}}';
-        const hintContent = '{{#Hint}}<div class="hint">{{Hint}}</div>{{/Hint}}';
-        const preloadImage = '{{#Image}}<img src="{{Image}}" loading="eager" style="display:none" alt="">{{/Image}}';
-        const answerContent = (contextAudio = '', hint = '') => `${questionContent}${hint}<hr id=answer><div>{{Back}}</div>{{#Image}}<div><img src="{{Image}}"></div>{{/Image}}${contextAudio}<div class="context">{{Context}}</div>`;
-        const speed = options.ttsSpeed ?? 1;
-        const audio = field => language ? `{{#${field}}}[anki:tts lang=${language} speed=${speed}]{{${field}}}[/anki:tts]{{/${field}}}` : '';
-        const templates = {
-          direct: { name: util.getText('mainTemplate'), qfmt: `${questionContent}${hintContent}${audio('Sound')}${preloadImage}`,
-            afmt: answerContent(audio('ContextSound'), hintContent) },
-          reverse: { name: util.getText('Reverse'), qfmt: `{{#ReversePrompt}}<div>{{ReversePrompt}}</div>{{/ReversePrompt}}${hintContent}${preloadImage}`,
-            afmt: answerContent(audio('CombinedSound'), hintContent) },
-          listening: { name: util.getText('Listening'), qfmt: `${audio('CombinedSound')}${hintContent}${preloadImage}`,
-            // FrontSide retains the question replay button without queuing answer audio.
-            afmt: `{{FrontSide}}${answerContent()}` },
-        };
+        const template = getAnkiTemplate(exportMode.key, options);
         const ankiModel = new Model({
           id: modelId,
           name: nodeType,
-          flds: [
-            { name: 'Front' },
-            { name: 'Back' },
-            { name: 'Sound' },
-            { name: 'Image' },
-            { name: 'Context' },
-            { name: 'Transcription' },
-          ].concat(exportMode.key === 'direct' ? [{ name: 'ContextSound' }]
-            : [{ name: 'ReversePrompt' }, { name: 'CombinedSound' }], [{ name: 'Hint' }]),
+          flds: getAnkiFieldNames(exportMode.key).map(name => ({ name })),
           req: [[0, 'all', exportMode.required]],
-          tmpls: [templates[exportMode.key]],
-          css: `.card { font-family: arial; font-size: 1.5rem; text-align: center; color: black; background-color: white; }
-            .hint { font-size: 1rem; opacity: 0.7; margin: 0.5rem 0; overflow-wrap: anywhere; }`,
+          tmpls: [{ name: template.name, qfmt: template.qfmt, afmt: template.afmt }],
+          css: template.css,
         });
 
         const deckId = reader ? getReaderAnkiId(options.current_course_id, exportMode.key, 'deck') : modelId + 1;
@@ -352,32 +321,8 @@ export default {
         db = new window.SQL.Database();
         ankiPackage.setSqlJs(db);
 
-        const audioModes = {
-          Sound: { mode: util.SOUND_MODE.FRONT_WORD },
-          ContextSound: { mode: util.SOUND_MODE.CONTEXT_ONLY },
-          CombinedSound: { mode: util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT },
-        };
-
         for (const item of wordsToExport) { // Use for...of for async iteration
-          const sounds = {};
-          for (const field of exportMode.fields) {
-            sounds[field] = (util.get_sound_text(item, audioModes[field].mode) || '')
-              .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-          }
-          const reversePrompt = util.getTranslationAlternatives(item.back).slice(0, 2).join('; ')
-            .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-
-          const fields = [
-            item.front,
-            item.back || '',
-            sounds.Sound || '',
-            item.image || '',
-            item.context || '',
-            item.transcription || '',
-          ];
-          if (exportMode.key === 'direct') fields.push(sounds.ContextSound || '');
-          else fields.push(reversePrompt, sounds.CombinedSound || '');
-          fields.push(item.hint || '');
+          const fields = getAnkiNoteFields(item, exportMode.key);
           // Editable translations, hints and examples do not change the note's identity.
           const note = new Note(ankiModel, fields, null,
             getStableNoteGuid(item.course_id || options.current_course_id, item.front, exportMode.key));
@@ -403,6 +348,11 @@ export default {
 </script>
 
 <style>
+.anki-export-actions .v-btn {
+  height: calc(var(--v-btn-height) - 8px);
+  border-radius: 4px;
+}
+
 .anki-export-modes {
   display: flex;
   width: 100%;

@@ -3,6 +3,7 @@ import './reader-import.test.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { reactive, computed, watch, nextTick, toRaw } from 'vue';
 import { parse, compileTemplate } from '@vue/compiler-sfc';
 import initSqlJs from 'sql.js';
 import JSZip from 'jszip';
@@ -14,6 +15,8 @@ import { isLocalExtension, getTranslateUrl } from '../src/lib/ai.js';
 import { translationLanguages } from '../src/lib/translationLanguages.js';
 import { getDuolingoCourseLanguage, normalizeLanguageCode } from '../src/lib/i18n/translation.js';
 import { readGoogleSearchImage } from '../src/lib/imageSearch.js';
+import * as ankiTemplates from '../src/lib/ankiTemplates.js';
+import * as ankiPreview from '../src/lib/ankiTemplatePreview.js';
 
 // Load the existing exporter with an in-memory download sink. FileSaver's named
 // browser export cannot be imported directly by Node; production code stays intact.
@@ -26,8 +29,13 @@ const { Model, Deck, Note, Package: AnkiPackage, getStableNoteGuid, getReaderAnk
 )((blob, name) => { download = { blob, name }; }, sha256, JSZip, bigInt);
 const { descriptor } = parse(readFileSync(new URL('../src/components/Anki.vue', import.meta.url), 'utf8'));
 const component = new Function('util', 'ActionButton', 'Model', 'Deck', 'Note', 'AnkiPackage', 'getStableNoteGuid', 'getReaderAnkiId', 'normalizeLanguageCode',
+  ...Object.keys(ankiTemplates), 'AnkiTemplateEditor',
   descriptor.script.content.replace(/^import .*;$/gm, '').replace('export default', 'return')
-)(util, {}, Model, Deck, Note, AnkiPackage, getStableNoteGuid, getReaderAnkiId, normalizeLanguageCode);
+)(util, {}, Model, Deck, Note, AnkiPackage, getStableNoteGuid, getReaderAnkiId, normalizeLanguageCode, ...Object.values(ankiTemplates), {});
+const editorDescriptor = parse(readFileSync(new URL('../src/components/AnkiTemplateEditor.vue', import.meta.url), 'utf8')).descriptor;
+const editorComponent = new Function('util', 'ActionButton', ...Object.keys(ankiTemplates), ...Object.keys(ankiPreview),
+  editorDescriptor.script.content.replace(/^import[\s\S]*?;\r?$/gm, '').replace('export default', 'return')
+)(util, {}, ...Object.values(ankiTemplates), ...Object.values(ankiPreview));
 const SQL = await initSqlJs();
 globalThis.window = { SQL };
 
@@ -324,6 +332,269 @@ async function exportCollection(vm) {
   }
 }
 
+function templateEditor(optionsData = { ...util.options, current_course_id: 'fr_en', ankiTemplates: {} }) {
+  const vm = reactive({ ...editorComponent.data(), optionsData, word, messages: [], saves: 0,
+    async saveOptions() { this.saves++; }, showMessage(...args) { this.messages.push(args); } });
+  for (const [name, method] of Object.entries(editorComponent.methods)) vm[name] = method.bind(vm);
+  for (const [name, getter] of Object.entries(editorComponent.computed)) Object.defineProperty(vm, name, { get: getter.bind(vm) });
+  return vm;
+}
+
+test('draft edits reactively refresh preview and Front/Back controls stay in sync while editing CSS', async () => {
+  const editor = templateEditor();
+  const preview = computed(() => editor.previewDocument);
+  const stops = [watch(() => editor.section, editorComponent.watch.section.bind(editor)),
+    watch(() => editor.side, editorComponent.watch.side.bind(editor))];
+  try {
+    editor.open('direct');
+    assert.match(preview.value, /bonjour/);
+    editor.draft.qfmt = '<h1>Edited front: {{Front}}</h1>';
+    await nextTick();
+    assert.match(preview.value, /<h1>Edited front: bonjour<\/h1>/);
+    editor.section = 'afmt';
+    await nextTick();
+    assert.equal(editor.side, 'back');
+    editor.draft.afmt = '<p>Edited back: {{Back}}</p>';
+    await nextTick();
+    assert.match(preview.value, /Edited back: hello;/);
+    editor.section = 'css';
+    editor.draft.css = '.card { color: purple; }';
+    await nextTick();
+    assert.match(preview.value, /color: purple/);
+    assert.match(preview.value, /Edited back:/);
+    editor.side = 'front';
+    await nextTick();
+    assert.equal(editor.section, 'css');
+    assert.match(preview.value, /Edited front:/);
+    editor.section = 'afmt';
+    await nextTick();
+    editor.side = 'front';
+    await nextTick();
+    assert.equal(editor.section, 'qfmt');
+    assert.deepEqual(editor.optionsData.ankiTemplates, {});
+  } finally { stops.forEach(stop => stop()); }
+});
+
+function previewAudio(document) {
+  return [...document.matchAll(/data-anki-audio="([^"]+)"/g)]
+    .map(match => JSON.parse(decodeURIComponent(match[1])));
+}
+
+test('preview sound uses the resolved Anki audio block, including static text, edited fields and FrontSide', () => {
+  const editor = templateEditor();
+  for (const mode of ['direct', 'reverse', 'listening']) {
+    editor.open(mode);
+    const frontAudio = previewAudio(editor.previewDocument);
+    assert.deepEqual(frontAudio.map(item => item.front), mode === 'reverse' ? []
+      : [mode === 'direct' ? 'bonjour' : 'bonjour. Bonjour tout le monde.']);
+    editor.side = 'back';
+    const backAudio = previewAudio(editor.previewDocument);
+    assert.deepEqual(backAudio.map(item => item.front),
+      [mode === 'direct' ? 'Bonjour tout le monde.' : 'bonjour. Bonjour tout le monde.']);
+  }
+  editor.open('direct');
+  editor.draft.qfmt = '[anki:tts lang=en_US speed=0.7]Say <b>{{Back}}</b><br>&amp; {{Front}} → keep this[/anki:tts]';
+  const [audio] = previewAudio(editor.previewDocument);
+  assert.deepEqual(audio, { front: 'Say hello; good morning; greeting & bonjour → keep this', targetLang: 'en-us', speed: 0.7 });
+  editor.draft.afmt = '{{FrontSide}}{{tts de_DE speed=0.9:Back}}';
+  editor.side = 'back';
+  const backAudio = previewAudio(editor.previewDocument);
+  assert.deepEqual(backAudio[0], audio);
+  assert.deepEqual(backAudio[1], { front: word.back, targetLang: 'de-de', speed: 0.9 });
+});
+
+test('clicking a preview replay button reuses the shared player with the template text and speed', () => {
+  const editor = templateEditor();
+  editor.open('direct');
+  editor.draft.qfmt = '[anki:tts lang=en_US speed=0.7]Edited speech: {{Back}} → keep this[/anki:tts]';
+  const [item] = previewAudio(editor.previewDocument);
+  const originalAudio = globalThis.Audio;
+  const originalPlayer = util.audioPlayer;
+  const originalSpeed = util.options.ttsSpeed;
+  const originalProvider = util.options.ttsProvider;
+  let click;
+  let prevented = false;
+  const frameDocument = { set onclick(callback) { click = callback; } };
+  editor.bindPreviewAudio({ target: { contentDocument: frameDocument } });
+  editor.bindPreviewAudio({ target: { contentDocument: frameDocument } });
+  globalThis.Audio = class {
+    constructor(url) { this.url = url; }
+    play() { this.played = true; return Promise.resolve(); }
+    pause() { this.paused = true; }
+  };
+  try {
+    util.options.ttsSpeed = 1.3;
+    util.options.ttsProvider = util.TTS_PROVIDER.GOOGLE;
+    util.audioPlayer = null;
+    click({ preventDefault() { prevented = true; }, target: { closest() {
+      return { dataset: { ankiAudio: encodeURIComponent(JSON.stringify(item)) } };
+    } } });
+    assert.equal(prevented, true);
+    assert.equal(util.audioPlayer.played, true);
+    assert.equal(new URL(util.audioPlayer.url).searchParams.get('q'), item.front);
+    assert.equal(new URL(util.audioPlayer.url).searchParams.get('tl'), 'en-us');
+    assert.equal(util.audioPlayer.playbackRate, 0.7);
+    assert.equal(util.options.ttsSpeed, 1.3);
+  } finally {
+    globalThis.Audio = originalAudio;
+    util.audioPlayer = originalPlayer;
+    util.options.ttsSpeed = originalSpeed;
+    util.options.ttsProvider = originalProvider;
+  }
+});
+
+test('template drafts save all modes, cancel without changing settings, and export the same content shown in preview', async () => {
+  const editor = templateEditor();
+  editor.open('direct');
+  editor.drafts.direct.qfmt = '<h1>Discard {{Front}}</h1>';
+  editor.show = false;
+  assert.deepEqual(editor.optionsData.ankiTemplates, {});
+  editor.open('direct');
+  assert.doesNotMatch(editor.draft.qfmt, /Discard/);
+  for (const mode of Object.keys(ankiTemplates.EXPORT_MODES)) {
+    editor.mode = mode;
+    editor.draft.qfmt = `<h1>${mode}: {{Front}}</h1>{{#Hint}}<aside>{{Hint}}</aside>{{/Hint}}`;
+    editor.draft.afmt = '{{FrontSide}}<hr>{{Back}}';
+    editor.draft.css = `.card { color: ${mode === 'direct' ? 'red' : 'blue'}; }`;
+    assert.match(editor.previewDocument, new RegExp(`${mode}: bonjour`));
+    editor.side = 'back';
+    assert.match(editor.previewDocument, /hello; good morning; greeting/);
+    editor.side = 'front';
+  }
+  await editor.save();
+  assert.equal(editor.show, false);
+  assert.equal(editor.saves, 1);
+  for (const mode of Object.keys(ankiTemplates.EXPORT_MODES)) {
+    const vm = exporter(mode);
+    vm.optionsData.ankiTemplates = editor.optionsData.ankiTemplates;
+    const { model } = await exportCollection(vm);
+    const saved = editor.optionsData.ankiTemplates[mode];
+    assert.equal(model.tmpls[0].qfmt, saved.qfmt);
+    assert.equal(model.tmpls[0].afmt, saved.afmt);
+    assert.equal(model.css, saved.css);
+  }
+});
+
+test('unchanged drafts preserve application defaults and reset removes only the active mode customization', async () => {
+  const editor = templateEditor();
+  editor.open('direct');
+  await editor.save();
+  assert.deepEqual(editor.optionsData.ankiTemplates, {});
+  editor.open('direct');
+  editor.drafts.direct.css = '.card { color: green; }';
+  editor.drafts.reverse.qfmt = '<div>Custom {{Back}}</div>';
+  await editor.save();
+  assert.equal(editor.optionsData.ankiTemplates.direct.qfmt,
+    ankiTemplates.getDefaultAnkiTemplate('direct', editor.optionsData).qfmt);
+  const reverse = structuredClone(toRaw(editor.optionsData.ankiTemplates.reverse));
+  editor.open('direct');
+  editor.resetDefault();
+  editor.show = false;
+  assert.equal(editor.optionsData.ankiTemplates.direct.css, '.card { color: green; }');
+  editor.open('direct');
+  editor.resetDefault();
+  await editor.save();
+  assert.equal(Object.hasOwn(editor.optionsData.ankiTemplates, 'direct'), false);
+  assert.deepEqual(editor.optionsData.ankiTemplates.reverse, reverse);
+  const vm = exporter('direct');
+  vm.optionsData.ankiTemplates = editor.optionsData.ankiTemplates;
+  const { model } = await exportCollection(vm);
+  assert.equal(model.css, ankiTemplates.getDefaultAnkiTemplate('direct', editor.optionsData).css);
+});
+
+test('field additions, deletions and renames replace saved templates with application defaults', async () => {
+  for (const mode of Object.keys(ankiTemplates.EXPORT_MODES)) {
+    const vm = exporter(mode);
+    const fieldNames = ankiTemplates.getAnkiFieldNames(mode);
+    const custom = { qfmt: '<div>Custom {{Front}}</div>', afmt: '{{Back}}', css: '.card { color: red; }' };
+    for (const changed of [[...fieldNames, 'RemovedField'], fieldNames.slice(1), ['OldFront', ...fieldNames.slice(1)]]) {
+      vm.optionsData.ankiTemplates = { [mode]: { ...custom, fieldNames: changed } };
+      const { model } = await exportCollection(vm);
+      assert.equal(model.tmpls[0].qfmt, ankiTemplates.getDefaultAnkiTemplate(mode, vm.optionsData).qfmt);
+      assert.notEqual(model.css, custom.css);
+    }
+    vm.optionsData.ankiTemplates = { [mode]: { ...custom, fieldNames: [...fieldNames].reverse() } };
+    const { model } = await exportCollection(vm);
+    assert.equal(model.tmpls[0].qfmt, custom.qfmt);
+  }
+});
+
+test('saved templates retain current application TTS language/speed and user-edited voices', () => {
+  const options = { ...util.options, current_course_id: 'fr_en', ttsSpeed: 1 };
+  const template = ankiTemplates.getDefaultAnkiTemplate('direct', options);
+  options.ankiTemplates = { direct: { ...template, css: '.card { color: red; }',
+    fieldNames: ankiTemplates.getAnkiFieldNames('direct'), tts: ankiTemplates.getAnkiTtsSettings(options) } };
+  options.current_course_id = 'de_en';
+  options.ttsSpeed = 0.8;
+  assert.match(ankiTemplates.getAnkiTemplate('direct', options).qfmt, /lang=de_DE speed=0.8/);
+  options.ankiTemplates.direct.qfmt = template.qfmt.replace('lang=fr_FR speed=1', 'lang=ja_JP speed=0.5');
+  assert.match(ankiTemplates.getAnkiTemplate('direct', options).qfmt, /lang=ja_JP speed=0.5/);
+});
+
+test('template storage survives reload and failed saves retain the previous settings and draft', async () => {
+  const originalChrome = globalThis.chrome;
+  const originalTemplates = util.options.ankiTemplates;
+  let stored;
+  globalThis.chrome = { storage: { local: {
+    async set(value) { stored = JSON.parse(JSON.stringify(value)); },
+    async get() { return stored; },
+  } } };
+  try {
+    const editor = templateEditor();
+    editor.saveOptions = () => util.save_options({ ankiTemplates: editor.optionsData.ankiTemplates });
+    editor.open('direct');
+    editor.draft.css = '.card { color: purple; }';
+    await editor.save();
+    util.options.ankiTemplates = {};
+    await util.read_options();
+    assert.equal(util.options.ankiTemplates.direct.css, '.card { color: purple; }');
+    editor.open('direct');
+    editor.draft.css = '.card { color: blue; }';
+    const previous = editor.optionsData.ankiTemplates;
+    editor.saveOptions = async () => { throw new Error('Storage unavailable'); };
+    await editor.save();
+    assert.equal(editor.optionsData.ankiTemplates, previous);
+    assert.equal(editor.show, true);
+    assert.equal(editor.draft.css, '.card { color: blue; }');
+    assert.equal(editor.messages.at(-1)[1], 'error');
+  } finally {
+    globalThis.chrome = originalChrome;
+    util.options.ankiTemplates = originalTemplates;
+  }
+});
+
+test('preview renders nested/inverted sections, FrontSide and HTML fields without reparsing field values', () => {
+  const template = { qfmt: '{{#Hint}}{{#Front}}<b>{{Front}}</b>{{/Front}}{{/Hint}}{{^Image}}No image{{/Image}}',
+    afmt: '{{FrontSide}}<hr>{{Back}} / {{text:Context}}', css: '.card { color: teal; }' };
+  const fields = { Front: 'bonjour', Hint: 'hint', Image: '', Back: '<i>{{Front}}</i>', Context: '<b>A &amp; B</b>' };
+  const front = ankiPreview.getAnkiPreviewDocument(template, fields, 'front');
+  const back = ankiPreview.getAnkiPreviewDocument(template, fields, 'back');
+  assert.match(front, /<b>bonjour<\/b>No image/);
+  assert.match(back, /<b>bonjour<\/b>No image<hr><i>{{Front}}<\/i> \/ A &amp; B/);
+  assert.match(back, /body class="card card1"/);
+  assert.match(back, /default-src 'none'/);
+  fields.Hint = '';
+  assert.doesNotMatch(ankiPreview.getAnkiPreviewDocument(template, fields, 'front'), /<b>bonjour/);
+  assert.throws(() => ankiPreview.validateAnkiTemplate({ qfmt: '{{Unknown}}', afmt: '' }, ['Front']), /Unknown field/);
+  assert.throws(() => ankiPreview.validateAnkiTemplate({ qfmt: '{{#Front}}oops', afmt: '' }, ['Front']), /conditional/);
+  assert.throws(() => ankiPreview.validateAnkiTemplate({ qfmt: '{{#Front}}{{Back{{/Front}}', afmt: '' }, ['Front', 'Back']), /brackets/);
+});
+
+test('editor formats code, blocks invalid fields, and uses the first current-course word even when export filters exclude it', () => {
+  const source = '<span>{{Front}}</span><span>{{Back}}</span><pre>  a\n b</pre>';
+  const formatted = ankiPreview.formatAnkiCode(source, 'qfmt');
+  assert.match(formatted, /<span>{{Front}}<\/span><span>{{Back}}<\/span>/);
+  assert.match(formatted, /<pre>  a\n b<\/pre>/);
+  assert.match(ankiPreview.formatAnkiCode('.card{color:red;font-size:20px;}', 'css'), /\n  color: red;/);
+  const editor = templateEditor();
+  editor.open('direct');
+  editor.draft.qfmt = '{{Missing}}';
+  assert.match(editor.templateError, /Unknown field/);
+  const first = { ...word, front: 'first', hasTranslation: false };
+  assert.equal(exporter('direct', [first, word]).previewWord, first);
+  assert.equal(compileTemplate({ source: editorDescriptor.template.content, filename: 'AnkiTemplateEditor.vue', id: 'test' }).errors.length, 0);
+});
+
 test('speech text and provider URLs preserve all browser sound modes', () => {
   assert.equal(util.options.ttsProvider, util.TTS_PROVIDER.RESPONSIVE_VOICE);
   const expected = new Map([
@@ -585,6 +856,40 @@ test('browser replay still stops the previous sound and OFF does not start audio
     util.audioPlayer = playerOriginal;
     util.options.ttsSpeed = speedOriginal;
     util.options.ttsProvider = providerOriginal;
+  }
+});
+
+test('replacing/stopping pending audio handles cancellation, while genuine playback errors remain readable', async () => {
+  const originalAudio = globalThis.Audio;
+  const originalPlayer = util.audioPlayer;
+  const originalError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args.join(' '));
+  globalThis.Audio = class {
+    constructor() { this.pending = new Promise((resolve, reject) => { this.reject = reject; }); }
+    play() { return this.pending; }
+    pause() { this.reject(new DOMException('Interrupted by pause().', 'AbortError')); }
+  };
+  try {
+    util.audioPlayer = null;
+    util.playSound(word, util.SOUND_MODE.FRONT_WORD);
+    util.playSound(word, util.SOUND_MODE.CONTEXT_ONLY);
+    await Promise.resolve();
+    assert.deepEqual(errors, []);
+    util.playSound(word, util.SOUND_MODE.OFF);
+    await Promise.resolve();
+    assert.deepEqual(errors, []);
+    assert.equal(util.audioPlayer, null);
+    const failed = util.playSound(word, util.SOUND_MODE.FRONT_WORD);
+    failed.reject(new DOMException('No supported source was found.', 'NotSupportedError'));
+    await Promise.resolve();
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /^Error playing audio: NotSupportedError: No supported source was found\./);
+    assert.match(errors[0], /provider=.*language=fr, speed=.*mediaError=none/);
+  } finally {
+    globalThis.Audio = originalAudio;
+    util.audioPlayer = originalPlayer;
+    console.error = originalError;
   }
 });
 
