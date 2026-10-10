@@ -3,11 +3,19 @@
 
     <div class="anki-export-actions d-flex align-center justify-end px-2" style="margin-bottom: 0.5rem;">
       <ActionButton icon="mdi-upload"
-        :tooltipText="util.getText('Export')"
+        :label="util.getText('Export')"
+        :tooltipText="util.getText('anki_exportTooltip', [util.getText(exportMode.label)])"
         color="success"
         :disabled="!canExport || exportingToAnki"
-        :loading="exportingToAnki"
+        :loading="exportingToAnki && !exportingAll"
         @click="triggerExport"/>
+      <ActionButton icon="mdi-upload-multiple"
+        :label="util.getText('Export all')"
+        :tooltipText="util.getText('anki_exportAllTooltip')"
+        color="success"
+        :disabled="!canExportAll || exportingToAnki"
+        :loading="exportingToAnki && exportingAll"
+        @click="triggerExportAll" />
       <ActionButton icon-only icon="mdi-cog-outline" :tooltipText="util.getText('Templates')" color="success"
         :disabled="exportingToAnki" @click="$refs.templateEditor.open(exportMode.key)" />
     </div>
@@ -192,6 +200,7 @@ export default {
   data() {
     return {
       exportingToAnki: false,
+      exportingAll: false,
       importGuide: { show: false, fileName: '', tab: 'import', warnings: [] },
     };
   },
@@ -202,6 +211,9 @@ export default {
     },
     canExport() {
       return Array.isArray(this.getValidWordsForExport());
+    },
+    canExportAll() {
+      return this.exportModes.some(mode => Array.isArray(this.getValidWordsForExport(mode)));
     },
     exportModes() {
       return Object.values(EXPORT_MODES);
@@ -218,9 +230,12 @@ export default {
       ];
     },
 
-    deckName() {
+    baseDeckName() {
       const course = util.getCurrentCourse();
-      return `duo2anki${course ? `- ${course}` : ''}${this.exportMode.suffix}`;
+      return `duo2anki${course ? `- ${course}` : ''}`;
+    },
+    deckName() {
+      return `${this.baseDeckName}${this.exportMode.suffix}`;
     },
     nodeType() {
       return `!${this.deckName}`;
@@ -250,7 +265,7 @@ export default {
 
     getTtsLanguage,
 
-    getValidWordsForExport() {
+    getValidWordsForExport(exportMode = this.exportMode) {
       if (!this.db_words || this.db_words.length === 0) {
         return util.getText('No words to process or request count is 0.');
       }
@@ -266,9 +281,9 @@ export default {
         words = words.filter(word => word.context && word.context.trim() !== '');
       }
 
-      if (this.exportMode.key === 'reverse') {
+      if (exportMode.key === 'reverse') {
         words = words.filter(word => util.getTranslationAlternatives(word.back).length > 0);
-      } else if (this.exportMode.key === 'listening') {
+      } else if (exportMode.key === 'listening') {
         const courseLanguage = util.get_course_info(this.optionsData.current_course_id).targetLang;
         words = this.getTtsLanguage(courseLanguage)
           ? words.filter(word => util.get_sound_text(word, util.SOUND_MODE.FRONT_WORD_WITH_CONTEXT)) : [];
@@ -280,11 +295,20 @@ export default {
       return words;
     },
 
-    async triggerExport() { // Changed to async as it calls async operations like ankiPackage.writeToFile
+    async triggerExport() {
+      return this.exportToAnki([this.exportMode]);
+    },
+
+    async triggerExportAll() {
+      return this.exportToAnki(this.exportModes);
+    },
+
+    async exportToAnki(exportModes) {
       if (this.exportingToAnki) return;
-      const wordsToExport = this.getValidWordsForExport();
-      if (typeof wordsToExport === 'string') {
-        this.showMessage(wordsToExport, 'warning');
+      const plans = exportModes.map(exportMode => ({ exportMode, words: this.getValidWordsForExport(exportMode) }));
+      const validPlans = plans.filter(plan => Array.isArray(plan.words));
+      if (!validPlans.length) {
+        this.showMessage(plans[0].words, 'warning');
         return;
       }
       
@@ -293,44 +317,46 @@ export default {
         return;
       }
       this.exportingToAnki = true;
+      this.exportingAll = exportModes.length > 1;
 
-      const deckName = this.deckName;
-      const nodeType = this.nodeType;
+      const baseDeckName = this.baseDeckName;
       const options = { ...this.optionsData };
-      const exportMode = this.exportMode;
       const reader = util.getReaderCourseInfo(options.current_course_id);
-      const modelId = reader ? getReaderAnkiId(options.current_course_id, exportMode.key, 'model')
-        : this.get_id_from_name(nodeType);
       let db;
       try {
-        const template = getAnkiTemplate(exportMode.key, options);
-        const ankiModel = new Model({
-          id: modelId,
-          name: nodeType,
-          flds: getAnkiFieldNames(exportMode.key).map(name => ({ name })),
-          req: [[0, 'all', exportMode.required]],
-          tmpls: [{ name: template.name, qfmt: template.qfmt, afmt: template.afmt }],
-          css: template.css,
-        });
-
-        const deckId = reader ? getReaderAnkiId(options.current_course_id, exportMode.key, 'deck') : modelId + 1;
-        const ankiDeck = new Deck(deckId, deckName);
         const ankiPackage = new AnkiPackage();
-        ankiPackage.addDeck(ankiDeck);
-
         db = new window.SQL.Database();
         ankiPackage.setSqlJs(db);
 
-        for (const item of wordsToExport) { // Use for...of for async iteration
-          const fields = getAnkiNoteFields(item, exportMode.key);
-          // Editable translations, hints and examples do not change the note's identity.
-          const note = new Note(ankiModel, fields, null,
-            getStableNoteGuid(item.course_id || options.current_course_id, item.front, exportMode.key));
-          ankiDeck.addNote(note);
+        for (const { exportMode, words } of validPlans) {
+          const deckName = `${baseDeckName}${exportMode.suffix}`;
+          const nodeType = `!${deckName}`;
+          const modelId = reader ? getReaderAnkiId(options.current_course_id, exportMode.key, 'model')
+            : this.get_id_from_name(nodeType);
+          const template = getAnkiTemplate(exportMode.key, options);
+          const ankiModel = new Model({
+            id: modelId,
+            name: nodeType,
+            flds: getAnkiFieldNames(exportMode.key).map(name => ({ name })),
+            req: [[0, 'all', exportMode.required]],
+            tmpls: [{ name: template.name, qfmt: template.qfmt, afmt: template.afmt }],
+            css: template.css,
+          });
+          const deckId = reader ? getReaderAnkiId(options.current_course_id, exportMode.key, 'deck') : modelId + 1;
+          const ankiDeck = new Deck(deckId, deckName);
+          ankiPackage.addDeck(ankiDeck);
+          for (const item of words) {
+            const fields = getAnkiNoteFields(item, exportMode.key);
+            // Editable translations, hints and examples do not change the note's identity.
+            const note = new Note(ankiModel, fields, null,
+              getStableNoteGuid(item.course_id || options.current_course_id, item.front, exportMode.key));
+            ankiDeck.addNote(note);
+          }
         }
 
-        // Now that all notes and media are added, write the file
-        const fileName = `${deckName}-${ wordsToExport.length } words-${ new Date().toISOString().split('T')[0] }.apkg`;
+        const wordCount = new Set(validPlans.flatMap(plan => plan.words)).size;
+        const fileDeckName = `${baseDeckName}${this.exportingAll ? ' - All' : validPlans[0].exportMode.suffix}`;
+        const fileName = `${fileDeckName}-${wordCount} words-${new Date().toISOString().split('T')[0]}.apkg`;
         await ankiPackage.writeToFile(fileName);
         this.showMessage(fileName, 'success');
         this.importGuide = { show: true, fileName, tab: 'import',
@@ -341,6 +367,7 @@ export default {
       } finally {
         db?.close();
         this.exportingToAnki = false;
+        this.exportingAll = false;
       }
     }
 }

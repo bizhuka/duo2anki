@@ -1,10 +1,10 @@
 import { util } from './util.js';
 import { process_with_GROQ, ENABLE_DEBUG_LOGGING } from './ai.js';
 
-async function _get_AI_results(firstId, lastId, expectedLength, ai_model, wordIsNew, ENABLE_DEBUG_LOGGING = false) {
+async function _get_AI_results(firstId, lastId, expectedLength, curr_ai_model, wordIsNew, ENABLE_DEBUG_LOGGING = false) {
     // Chrome runs this function in the AI tab, so its DOM helpers stay nested here.
     return new Promise((resolve, reject) => {
-        const isGrok = ai_model === 'grok'; //util.AI_MODEL.GROK;
+        const isGrok = curr_ai_model === 'grok'; //util.curr_ai_model.GROK;
         if (ENABLE_DEBUG_LOGGING) console.log(`_get_AI_results started. isGrok: ${isGrok}, firstId: ${firstId}, lastId: ${lastId}, expectedLength: ${expectedLength}, wordIsNew: ${wordIsNew}`);
         const mainElementSelector = 'body';
         const resultSelector = isGrok
@@ -159,7 +159,7 @@ async function _check_context_results(tabId, wordsToProcess, optionsData) {
 
     const results = await chrome.scripting.executeScript({
         target: { tabId },
-        args: [firstId, lastId, expectedLength, optionsData.ai_model, Number(firstId) === util.WORD_IS_NEW, ENABLE_DEBUG_LOGGING],
+        args: [firstId, lastId, expectedLength, optionsData.curr_ai_model, Number(firstId) === util.WORD_IS_NEW, ENABLE_DEBUG_LOGGING],
         func: _get_AI_results,
     });
 
@@ -187,7 +187,7 @@ export async function processContexts(inWords, optionsData, actionCallback) {
     const wordsPerRequest = optionsData.words_per_request;
 
     // GROQ returns structured data directly; the other providers are read from browser tabs.
-    if (optionsData.ai_model === util.AI_MODEL.GROQ) {
+    if (optionsData.curr_ai_model === util.curr_ai_model.GROQ) {
         const batchesToProcess = [];
         for (let i = 0; i < optionsData.request_count; i++) {
             const startIndex = i * wordsPerRequest;
@@ -241,7 +241,7 @@ export async function processContexts(inWords, optionsData, actionCallback) {
 
         // Construct the URL
         const encodedContext = encodeURIComponent(fullContextText);
-        const url = optionsData.ai_model === util.AI_MODEL.GROK ?
+        const url = optionsData.curr_ai_model === util.curr_ai_model.GROK ?
             `https://grok.com/?q=${encodedContext}` :
             `https://chat.openai.com/?q=${encodedContext}`;
 

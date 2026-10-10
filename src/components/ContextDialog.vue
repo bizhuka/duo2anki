@@ -14,11 +14,11 @@
                     :label="util.getText('Transcription')" rows="2" max-rows="3" auto-grow density="compact"
                     hide-details :disabled="dialog.loadingWords" append-inner-icon="mdi-replay"
                     @click:append-inner="fillDefaultTranscriptionPrompt" />
-                <v-radio-group v-model="optionsData.ai_model" inline prepend-icon="mdi-robot-happy-outline"
+                <v-radio-group v-model="optionsData.curr_ai_model" inline prepend-icon="mdi-robot-happy-outline"
                     density="compact" hide-details :disabled="dialog.loadingWords" class="mt-2">
-                    <v-radio :label="util.getText('Chat GPT')" :value="util.AI_MODEL.CHATGPT"></v-radio>
-                    <v-radio :label="util.getText('Grok')" :value="util.AI_MODEL.GROK"></v-radio>
-                    <v-radio label="OSS 120b" :value="util.AI_MODEL.GROQ"></v-radio>
+                    <v-radio label="Fast AI (No Extra Tab)" :value="util.curr_ai_model.GROQ"></v-radio>
+                    <v-radio :label="util.getText('Chat GPT')" :value="util.curr_ai_model.CHATGPT"></v-radio>
+                    <v-radio :label="util.getText('Grok')" :value="util.curr_ai_model.GROK"></v-radio>
                 </v-radio-group>
                 <BatchRequestControls v-model:words-per-request="optionsData.words_per_request"
                     v-model:request-count="optionsData.request_count" :disabled="dialog.loadingWords" />

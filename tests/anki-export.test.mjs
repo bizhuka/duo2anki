@@ -315,11 +315,7 @@ function exporter(mode, words = [word], courseId = 'fr_en') {
 async function exportCollection(vm) {
   download = null;
   await vm.triggerExport();
-  assert.ok(download, JSON.stringify(vm.messages));
-  const zip = await JSZip.loadAsync(await download.blob.arrayBuffer());
-  assert.deepEqual(Object.keys(zip.files).sort(), ['collection.anki2', 'media']);
-  assert.equal(await zip.file('media').async('string'), '{}');
-  const db = new SQL.Database(await zip.file('collection.anki2').async('uint8array'));
+  const db = await openDownloadedCollection(vm.messages);
   try {
     const model = Object.values(JSON.parse(db.exec('SELECT models FROM col')[0].values[0][0]))[0];
     const [fields, guid] = db.exec('SELECT flds, guid FROM notes')[0].values[0];
@@ -331,6 +327,101 @@ async function exportCollection(vm) {
     db.close();
   }
 }
+
+async function openDownloadedCollection(messages) {
+  assert.ok(download, JSON.stringify(messages));
+  const zip = await JSZip.loadAsync(await download.blob.arrayBuffer());
+  assert.deepEqual(Object.keys(zip.files).sort(), ['collection.anki2', 'media']);
+  assert.equal(await zip.file('media').async('string'), '{}');
+  return new SQL.Database(await zip.file('collection.anki2').async('uint8array'));
+}
+
+test('Export all bundles only the selected course and retains each mode identity, filters, templates and Games progress', async () => {
+  const originalCourse = util.options.current_course_id;
+  try {
+    for (const course_id of ['fr_en', 'fr_kindle', 'fr_koreader']) {
+      util.options.current_course_id = course_id;
+      const mainWord = { ...word, course_id, status: STATUS.LEARNED, next_review: new Date(1800000000000),
+        interval: 14400, ease_factor: 2.7, steps_index: 2 };
+      const words = [mainWord, { ...mainWord, id: 2, front: 'punctuation', back: ';' },
+        { ...mainWord, front: 'other-course', course_id: 'de_en' },
+        { ...mainWord, front: 'archived', archived: true }, { ...mainWord, front: 'untranslated', hasTranslation: false },
+        { ...mainWord, front: 'no-context', context: '' }, { ...mainWord, front: 'no-image', image: '' }];
+      const originalWords = structuredClone(words);
+      const vm = exporter('reverse', words, course_id);
+      vm.optionsData.ankiTemplates = { reverse: { fieldNames: ankiTemplates.getAnkiFieldNames('reverse'),
+        qfmt: '<div>Custom reverse: {{ReversePrompt}}</div>', afmt: '{{Front}} / {{Back}}', css: '.card { color: green; }' } };
+      const originalOptions = structuredClone(vm.optionsData);
+      const separateExports = {};
+      for (const mode of ['direct', 'reverse', 'listening']) {
+        const separate = exporter(mode, [mainWord], course_id);
+        separate.optionsData.ankiTemplates = vm.optionsData.ankiTemplates;
+        separateExports[mode] = await exportCollection(separate);
+      }
+      download = null;
+      await vm.triggerExportAll();
+      const db = await openDownloadedCollection(vm.messages);
+      try {
+        const [modelJson, deckJson] = db.exec('SELECT models, decks FROM col')[0].values[0];
+        const models = JSON.parse(modelJson);
+        const decks = JSON.parse(deckJson);
+        const notes = db.exec('SELECT guid, mid, flds FROM notes')[0].values;
+        const cards = db.exec('SELECT did, type, queue, due, ivl, factor, reps, lapses, left, odue, odid FROM cards')[0].values;
+        assert.equal(Object.keys(models).length, 3);
+        assert.equal(Object.keys(decks).filter(id => id !== '1').length, 3);
+        assert.equal(notes.length, 5); // Reverse excludes the punctuation-only translation.
+        assert.equal(cards.length, 5);
+        assert.equal(new Set(notes.map(([guid]) => guid)).size, 5);
+        assert.ok(cards.every(([, ...schedule]) => schedule.every(value => value === 0)));
+        for (const mode of ['direct', 'reverse', 'listening']) {
+          const separate = separateExports[mode];
+          const model = models[separate.model.id];
+          assert.equal(model.name, separate.model.name);
+          assert.deepEqual(model.flds, separate.model.flds);
+          assert.deepEqual(model.tmpls, separate.model.tmpls);
+          assert.equal(model.css, separate.model.css);
+          const note = notes.find(([guid]) => guid === separate.guid);
+          assert.ok(note);
+          assert.equal(note[1], model.id);
+          assert.deepEqual(note[2].split('\x1f'), Object.values(separate.fields));
+          const deckId = course_id === 'fr_en' ? model.id + 1 : getReaderAnkiId(course_id, mode, 'deck');
+          assert.equal(decks[deckId].name, model.name.slice(1));
+          assert.equal(cards.filter(([id]) => id === deckId).length, mode === 'reverse' ? 1 : 2);
+        }
+        assert.match(download.name, / - All-2 words-\d{4}-\d{2}-\d{2}\.apkg$/);
+        assert.equal(vm.importGuide.fileName, download.name);
+        assert.equal(vm.importGuide.show, true);
+        assert.deepEqual(vm.db_words, originalWords);
+        assert.deepEqual(vm.optionsData, originalOptions);
+        assert.equal(vm.exportingToAnki, false);
+        assert.equal(vm.exportingAll, false);
+      } finally { db.close(); }
+    }
+  } finally { util.options.current_course_id = originalCourse; }
+});
+
+test('Export all skips empty modes, exports when another mode is eligible, and stops when the course has no eligible words', async () => {
+  const vm = exporter('listening', [{ ...word, course_id: 'kindle' }], 'kindle');
+  assert.equal(vm.canExport, false);
+  assert.equal(vm.canExportAll, true);
+  download = null;
+  await vm.triggerExportAll();
+  const db = await openDownloadedCollection(vm.messages);
+  try {
+    const models = JSON.parse(db.exec('SELECT models FROM col')[0].values[0][0]);
+    assert.equal(Object.keys(models).length, 2);
+    assert.equal(db.exec('SELECT count(*) FROM cards')[0].values[0][0], 2);
+    assert.match(download.name, / - All-1 words-/);
+  } finally { db.close(); }
+  for (const words of [[], [{ ...word, course_id: 'other-course' }], [{ ...word, archived: true }]]) {
+    const empty = exporter('direct', words);
+    assert.equal(empty.canExportAll, false);
+    download = null;
+    await empty.triggerExportAll();
+    assert.equal(download, null);
+    assert.equal(empty.messages.at(-1)[1], 'warning');
+  }
+});
 
 function templateEditor(optionsData = { ...util.options, current_course_id: 'fr_en', ankiTemplates: {} }) {
   const vm = reactive({ ...editorComponent.data(), optionsData, word, messages: [], saves: 0,

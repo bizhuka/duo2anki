@@ -1,5 +1,5 @@
 <template>
-  <v-tooltip :text="tooltipText" location="top" :disabled="!iconOnly">
+  <v-tooltip :text="tooltipText" location="top" :disabled="!iconOnly && !label">
     <template v-slot:activator="{ props: tooltipProps }">
     <v-btn
         v-bind="tooltipProps"
@@ -15,7 +15,7 @@
         @click="$emit('click', $event)"
       >
         <v-icon :icon="icon" :class="{ 'mr-1': !iconOnly }"></v-icon>
-        <template v-if="!iconOnly">{{ tooltipText }}</template>
+        <template v-if="!iconOnly">{{ label || tooltipText }}</template>
       </v-btn>
     </template>
   </v-tooltip>
@@ -27,6 +27,7 @@ import { defineProps, defineEmits } from 'vue';
 defineProps({
   icon: { type: String, required: true },
   tooltipText: { type: String, required: true },
+  label: { type: String, default: '' },
   iconOnly: { type: Boolean, default: false },
   color: { type: String, default: undefined },
   variant: { type: String, default: 'text' },

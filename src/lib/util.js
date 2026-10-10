@@ -7,14 +7,14 @@ export const util = {
     lightTheme: true,
     current_course_id: null,
     // Context
-    ai_model: 'chatgpt',
+    curr_ai_model: 'oss_120b',
     prompt_prefix: "",
     include_transcription: false,
     replace_context_for_reader: false,
     transcription_prompt: "",
     request_count: 1,
     words_per_request: 10,
-    add_2_back: true,
+    add_2_back: false,
     translation_to: 'en',
     ttsProvider: "Responsive Voice",
     ttsSpeed: 1,
@@ -69,7 +69,7 @@ export const util = {
     FRONT_WORD_WITH_CONTEXT: 40,
   },
 
-  AI_MODEL: {
+  curr_ai_model: {
     CHATGPT: 'chatgpt',
     GROK: 'grok',
     GROQ: 'oss_120b',

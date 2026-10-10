@@ -17,7 +17,7 @@ const editor = readComponent('EditDialog');
 const initialWord = () => ({ id: 7, front: 'bonjour', back: 'old translation', context: 'old example', hint: 'Existing book', targetLang: 'fr', hasTranslation: false, image: 'keep.png' });
 const result = [{ id: 7, back: 'new translation', context: 'new example' }];
 function instance(request = async () => result) {
-  const props = reactive({ word: initialWord(), soundMode: util.SOUND_MODE.OFF, optionsData: { translation_to: 'en', ai_model: 'ChatGPT' } });
+  const props = reactive({ word: initialWord(), soundMode: util.SOUND_MODE.OFF, optionsData: { translation_to: 'en', curr_ai_model: 'ChatGPT' } });
   const emitted = [];
   const played = [];
   const speechUtil = { ...util, playSound: (word, mode) => played.push({ word, mode }) };
@@ -75,7 +75,7 @@ test('AI example button starts immediately and keeps the word unchanged until Sa
   assert.equal(vm.review.show, true);
   assert.equal(vm.review.replaceTranslation, true);
   assert.equal(vm.review.replaceContext, true);
-  assert.equal(vm.props.optionsData.ai_model, 'ChatGPT');
+  assert.equal(vm.props.optionsData.curr_ai_model, 'ChatGPT');
   vm.save();
   assert.equal(vm.emitted.length, 1);
 });
@@ -222,10 +222,10 @@ test('context responses save bracketed bold transcription for API, ChatGPT and G
   const originalChrome = globalThis.chrome;
   const originalFetch = globalThis.fetch;
   try {
-    for (const ai_model of Object.values(util.AI_MODEL)) {
+    for (const curr_ai_model of Object.values(util.curr_ai_model)) {
       for (const include_transcription of [true, false]) {
         const word = { id: 7, front: 'bonjour', back: '', context: '', transcription: 'keep hint', targetLang: 'fr' };
-        const options = { ai_model, include_transcription, prompt_prefix: 'prompt', words_per_request: 10,
+        const options = { curr_ai_model, include_transcription, prompt_prefix: 'prompt', words_per_request: 10,
           request_count: 1, add_2_back: true, translation_to: 'en' };
         let listener;
         let saved;
@@ -460,7 +460,7 @@ test('reader generation preserves book contexts by default and replaces them onl
     globalThis.fetch = async () => ({ ok: true, json: async () => ({ results: [
       { id: 7, front: 'bonjour [bon**jour**]', back: 'hello', context: 'generated example. → translated example.' },
     ] }) });
-    for (const ai_model of Object.values(util.AI_MODEL)) {
+    for (const curr_ai_model of Object.values(util.curr_ai_model)) {
     for (const [course_id, context, replace_context_for_reader, expected] of [
       ['fr_kindle', '<b>Book example.</b>', false, '<b>Book example.</b>'],
       ['fr_koreader', 'Book example.', false, 'Book example.'],
@@ -473,7 +473,7 @@ test('reader generation preserves book contexts by default and replaces them onl
         tabs: { create: async () => ({ id: 1 }), onUpdated: { addListener: callback => { listener = callback; }, removeListener() {} } },
         scripting: { executeScript: async () => [{ result: [['7', 'bonjour [bon**jour**]', 'hello', 'generated example.', 'translated example.']] }] } };
       const word = { id: 7, front: 'bonjour', course_id, context, targetLang: 'fr', hint: 'Book hint' };
-      await processContexts([word], { ai_model, prompt_prefix: 'prompt', request_count: 1,
+      await processContexts([word], { curr_ai_model, prompt_prefix: 'prompt', request_count: 1,
         words_per_request: 10, add_2_back: true, include_transcription: true, translation_to: 'en', replace_context_for_reader }, () => {});
       if (listener) await listener(1, { status: 'complete' });
       assert.equal(word.context, expected);
