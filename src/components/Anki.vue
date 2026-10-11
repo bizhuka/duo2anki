@@ -104,10 +104,13 @@
     <v-dialog v-model="importGuide.show" max-width="640" scrollable>
       <v-card>
         <v-card-title>{{ util.getText('Import into Anki') }}</v-card-title>
-        <v-tabs v-if="importGuide.warnings.length" v-model="importGuide.tab" color="primary">
-          <v-tab value="import">{{ util.getText('Import into Anki') }}</v-tab>
-          <v-tab value="warnings">{{ util.getText('Warnings') }} ({{ importGuide.warnings.length }})</v-tab>
-        </v-tabs>
+        <v-card-item v-if="importGuide.warnings.length" class="flex-shrink-0">
+          <v-btn-toggle v-model="importGuide.tab" mandatory divided variant="outlined" color="primary"
+            class="anki-export-modes">
+            <v-btn value="import" size="small">{{ util.getText('Import into Anki') }}</v-btn>
+            <v-btn value="warnings" size="small">{{ util.getText('Warnings') }} ({{ importGuide.warnings.length }})</v-btn>
+          </v-btn-toggle>
+        </v-card-item>
         <v-card-text>
           <v-window v-model="importGuide.tab">
             <v-window-item value="import">
@@ -137,6 +140,10 @@
               <v-alert type="warning" variant="tonal" density="compact">
                 {{ util.getImageTooLargeMessage('anki_imageSizeWarning') }}
               </v-alert>
+              <div class="d-flex justify-end mt-3">
+                <ActionButton icon="mdi-download" :label="`${util.getText('Export')} CSV`"
+                  :tooltipText="`${util.getText('Export')} CSV`" @click="exportImageWarnings" />
+              </div>
               <v-table density="compact" class="anki-import-settings mt-3">
                 <thead>
                   <tr>
@@ -169,6 +176,7 @@
 </script>
 
 <script>
+import { saveAs } from 'file-saver';
 import { Model, Deck, Note, Package as AnkiPackage, getStableNoteGuid, getReaderAnkiId } from '../lib/genanki.js';
 import { EXPORT_MODES, getTtsLanguage, getAnkiFieldNames, getAnkiNoteFields, getAnkiTemplate } from '../lib/ankiTemplates.js';
 import AnkiTemplateEditor from './AnkiTemplateEditor.vue';
@@ -247,6 +255,16 @@ export default {
   },
   
   methods: {
+    exportImageWarnings() {
+      const rows = [
+        ['Word', 'Image size (kB)'],
+        ...this.importGuide.warnings.map(warning => [warning.word, (warning.size / 1000).toFixed(2)]),
+      ];
+      const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+      const fileName = this.importGuide.fileName.replace(/\.apkg$/i, '') || 'duo2anki';
+      saveAs(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }), `${fileName}-image-warnings.csv`);
+    },
+
     getImageWarnings() {
       return this.db_words
         .filter(word => word.course_id === this.optionsData.current_course_id && util.isImageTooLarge(word.image))

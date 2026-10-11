@@ -29,9 +29,10 @@ const { Model, Deck, Note, Package: AnkiPackage, getStableNoteGuid, getReaderAnk
 )((blob, name) => { download = { blob, name }; }, sha256, JSZip, bigInt);
 const { descriptor } = parse(readFileSync(new URL('../src/components/Anki.vue', import.meta.url), 'utf8'));
 const component = new Function('util', 'ActionButton', 'Model', 'Deck', 'Note', 'AnkiPackage', 'getStableNoteGuid', 'getReaderAnkiId', 'normalizeLanguageCode',
-  ...Object.keys(ankiTemplates), 'AnkiTemplateEditor',
+  ...Object.keys(ankiTemplates), 'AnkiTemplateEditor', 'saveAs',
   descriptor.script.content.replace(/^import .*;$/gm, '').replace('export default', 'return')
-)(util, {}, Model, Deck, Note, AnkiPackage, getStableNoteGuid, getReaderAnkiId, normalizeLanguageCode, ...Object.values(ankiTemplates), {});
+)(util, {}, Model, Deck, Note, AnkiPackage, getStableNoteGuid, getReaderAnkiId, normalizeLanguageCode, ...Object.values(ankiTemplates), {},
+  (blob, name) => { download = { blob, name }; });
 const editorDescriptor = parse(readFileSync(new URL('../src/components/AnkiTemplateEditor.vue', import.meta.url), 'utf8')).descriptor;
 const editorComponent = new Function('util', 'ActionButton', ...Object.keys(ankiTemplates), ...Object.keys(ankiPreview),
   editorDescriptor.script.content.replace(/^import[\s\S]*?;\r?$/gm, '').replace('export default', 'return')
@@ -42,6 +43,21 @@ globalThis.window = { SQL };
 const word = { id: 1, front: 'bonjour', back: 'hello; good morning; greeting',
   context: '<b>Bonjour</b> tout le monde. → Hello everyone.', transcription: 'bɔ̃ʒuʁ', hint: 'French book',
   targetLang: 'fr', image: 'example.png', hasTranslation: true, course_id: 'fr_en' };
+
+test('image warning CSV preserves order, Unicode, commas, quotes, and line breaks', async () => {
+  const vm = exporter('direct');
+  vm.importGuide = { fileName: 'duo2anki- French - Direct.apkg', warnings: [
+    { word: 'bonjour, "ami"\n\u00e9t\u00e9', size: 23456 },
+    { word: 'salut', size: 12345 },
+  ] };
+  const original = structuredClone(vm.importGuide);
+  vm.exportImageWarnings();
+  assert.equal(download.name, 'duo2anki- French - Direct-image-warnings.csv');
+  assert.equal(download.blob.type, 'text/csv;charset=utf-8');
+  assert.deepEqual(Array.from(new Uint8Array(await download.blob.arrayBuffer()).slice(0, 3)), [239, 187, 191]);
+  assert.equal(await download.blob.text(), '"Word","Image size (kB)"\r\n"bonjour, ""ami""\n\u00e9t\u00e9","23.46"\r\n"salut","12.35"');
+  assert.deepEqual(vm.importGuide, original);
+});
 
 test('image sources limit base64 length without limiting URLs', () => {
   const prefix = 'data:image/jpeg;base64,';
