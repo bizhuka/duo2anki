@@ -75,6 +75,7 @@ class MessageHandler {
             args: [], // No arguments needed for the function
         });
 
+        if (results?.[0]?.result?.error) throw new Error(results[0].result.error);
         if (!results || !results[0] || !results[0].result || !Array.isArray(results[0].result)) {
             throw new Error(util.getText("bg_invalidVocabData"), results);
         }
